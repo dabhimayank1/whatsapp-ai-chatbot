@@ -1,34 +1,138 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Chat History - {{ session_id }}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conversation — {{ session_id }}</title>
 <style>
-  body { font-family: Arial, sans-serif; background: #ece5dd; padding: 30px; }
-  .back { color: #075e54; text-decoration: none; font-weight: 600; }
-  h2 { color: #075e54; }
-  .msg { max-width: 60%; padding: 10px 14px; border-radius: 8px; margin-bottom: 10px; }
-  .user { background: #dcf8c6; margin-left: auto; }
-  .bot { background: white; }
-  .escalated { border-left: 4px solid #e53935; }
-  .time { font-size: 11px; color: #888; margin-top: 4px; }
-  form { margin-top: 20px; }
-  button { background: #075e54; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; }
+  :root {
+    --navy: #0f1f38;
+    --navy-2: #16294a;
+    --accent: #25d366;
+    --accent-dark: #128c4a;
+    --red: #e6483f;
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --border: #e4e9f0;
+    --text: #1a2436;
+    --text-dim: #6b7688;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Inter, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  header {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+    color: white;
+    padding: 20px 40px;
+  }
+  .back-link {
+    color: #a9b6cc; text-decoration: none; font-size: 13px;
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px;
+  }
+  .back-link:hover { color: white; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .session-title { display: flex; align-items: center; gap: 12px; }
+  .session-title .avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  .session-title h1 { margin: 0; font-size: 17px; font-weight: 650; }
+  .session-title p { margin: 2px 0 0; font-size: 12.5px; color: #a9b6cc; }
+  .status-pill {
+    padding: 6px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 600;
+  }
+  .status-escalated { background: rgba(230,72,63,0.18); color: #ff8f7d; }
+  .status-bot { background: rgba(37,211,102,0.18); color: #a9e8c4; }
+
+  main { max-width: 760px; margin: 0 auto; padding: 30px 24px 100px; }
+
+  .chat-thread { display: flex; flex-direction: column; gap: 4px; }
+  .msg-row { display: flex; }
+  .msg-row.user { justify-content: flex-end; }
+  .msg-row.bot { justify-content: flex-start; }
+  .bubble {
+    max-width: 72%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 4px 0;
+  }
+  .bubble.user { background: var(--navy); color: white; border-bottom-right-radius: 3px; }
+  .bubble.bot { background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+  .bubble.bot.escalated { border-left: 3px solid var(--red); }
+  .msg-meta { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; }
+  .msg-row.user .msg-meta { text-align: right; }
+
+  .day-divider {
+    text-align: center; font-size: 11.5px; color: var(--text-dim);
+    margin: 18px 0 10px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+
+  .action-bar {
+    position: sticky; bottom: 0; background: linear-gradient(to top, var(--bg) 70%, transparent);
+    padding: 24px 0 8px; margin-top: 20px;
+  }
+  .resolve-btn {
+    background: var(--accent-dark); color: white; border: none;
+    padding: 12px 22px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    box-shadow: 0 4px 14px rgba(18,140,74,0.25);
+    transition: background 0.15s;
+  }
+  .resolve-btn:hover { background: #0f7540; }
+
+  @media (max-width: 640px) {
+    header { padding: 18px 20px; }
+    main { padding: 24px 16px 90px; }
+    .bubble { max-width: 85%; }
+  }
 </style>
 </head>
 <body>
-  <a class="back" href="/admin">← Back to all sessions</a>
-  <h2>Chat with: {{ session_id }}</h2>
-
-  {% for m in messages %}
-    <div class="msg {{ m.sender }} {% if m.escalated %}escalated{% endif %}">
-      <div>{{ m.message }}</div>
-      <div class="time">{{ m.sender }} • {{ m.created_at }}</div>
+  <header>
+    <a class="back-link" href="/admin">← All conversations</a>
+    <div class="header-row">
+      <div class="session-title">
+        <div class="avatar">👤</div>
+        <div>
+          <h1>{{ session_id }}</h1>
+          <p>{{ company_name }} · Conversation history</p>
+        </div>
+      </div>
+      {% set is_escalated = messages|selectattr('escalated', 'equalto', 1)|list|length > 0 %}
+      {% if is_escalated %}
+        <span class="status-pill status-escalated">⚠️ Needs Human</span>
+      {% else %}
+        <span class="status-pill status-bot">🤖 Bot Handling</span>
+      {% endif %}
     </div>
-  {% endfor %}
+  </header>
 
-  <form method="post" action="/admin/{{ session_id }}/resolve">
-    <button type="submit">✅ Mark as Resolved (bot takes over again)</button>
-  </form>
+  <main>
+    <div class="chat-thread">
+      {% for m in messages %}
+      <div class="msg-row {{ m.sender }}">
+        <div>
+          <div class="bubble {{ m.sender }} {{ 'escalated' if m.escalated else '' }}">{{ m.message }}</div>
+          <div class="msg-meta">{{ m.created_at }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="action-bar">
+      <form method="post" action="/admin/{{ session_id }}/resolve">
+        <button type="submit" class="resolve-btn">✓ Mark as Resolved</button>
+      </form>
+    </div>
+  </main>
 </body>
 </html>

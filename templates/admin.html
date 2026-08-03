@@ -1,39 +1,211 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Admin - Chat Sessions</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Support Dashboard</title>
 <style>
-  body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 30px; }
-  h1 { color: #075e54; }
-  table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
-  th, td { padding: 12px 14px; border-bottom: 1px solid #eee; text-align: left; }
-  th { background: #075e54; color: white; }
-  tr:hover { background: #f9f9f9; }
-  .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; color: white; }
-  .badge-bot { background: #4caf50; }
-  .badge-escalated { background: #e53935; }
-  a { color: #075e54; text-decoration: none; font-weight: 600; }
+  :root {
+    --navy: #0f1f38;
+    --navy-2: #16294a;
+    --accent: #25d366;
+    --accent-dark: #128c4a;
+    --red: #e6483f;
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --border: #e4e9f0;
+    --text: #1a2436;
+    --text-dim: #6b7688;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Inter, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  header {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+    color: white;
+    padding: 28px 40px;
+  }
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: rgba(37, 211, 102, 0.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .brand h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
+  .brand p { margin: 2px 0 0; font-size: 13px; color: #a9b6cc; }
+  .live-dot {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12.5px; color: #a9e8c4; background: rgba(37,211,102,0.12);
+    padding: 6px 12px; border-radius: 20px; border: 1px solid rgba(37,211,102,0.25);
+  }
+  .live-dot::before {
+    content: ""; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent); animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(37,211,102,0.5); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(37,211,102,0); }
+  }
+
+  .stats-row { display: flex; gap: 16px; margin-top: 24px; flex-wrap: wrap; }
+  .stat-card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 16px 20px;
+    min-width: 160px;
+    flex: 1;
+  }
+  .stat-card .num { font-size: 26px; font-weight: 700; line-height: 1; }
+  .stat-card .label { font-size: 12.5px; color: #a9b6cc; margin-top: 6px; }
+  .stat-card.alert .num { color: #ff8f7d; }
+
+  main { max-width: 1000px; margin: 0 auto; padding: 32px 40px 60px; }
+
+  .toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px; gap: 12px; flex-wrap: wrap;
+  }
+  .toolbar h2 { font-size: 16px; margin: 0; color: var(--text); }
+  .search-box { position: relative; flex: 1; max-width: 320px; }
+  .search-box input {
+    width: 100%; padding: 10px 14px 10px 36px; border-radius: 10px;
+    border: 1px solid var(--border); font-size: 14px; background: var(--card);
+    outline: none; transition: border-color 0.15s;
+  }
+  .search-box input:focus { border-color: var(--accent-dark); }
+  .search-box::before {
+    content: "🔍"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    font-size: 13px; opacity: 0.5;
+  }
+
+  .session-list { display: flex; flex-direction: column; gap: 10px; }
+  .session-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 20px;
+    display: flex; align-items: center; gap: 16px;
+    text-decoration: none; color: inherit;
+    transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+  }
+  .session-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(15,31,56,0.08);
+    border-color: #d5dde8;
+  }
+  .session-card.needs-human { border-left: 3px solid var(--red); }
+  .session-avatar {
+    width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+    background: #eef2f7; display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: var(--navy);
+  }
+  .session-info { flex: 1; min-width: 0; }
+  .session-id { font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-time { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+  .badge { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+  .badge-bot { background: #e7f8ee; color: var(--accent-dark); }
+  .badge-escalated { background: #fdeceb; color: var(--red); }
+  .arrow { color: var(--text-dim); font-size: 15px; flex-shrink: 0; }
+
+  .empty-state { text-align: center; padding: 70px 20px; color: var(--text-dim); }
+  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-state p { font-size: 14.5px; margin: 0; }
+
+  @media (max-width: 640px) {
+    header { padding: 22px 20px; }
+    main { padding: 24px 20px 40px; }
+    .stat-card { min-width: 130px; }
+  }
 </style>
 </head>
 <body>
-  <h1>📋 Chat Sessions ({{ sessions|length }})</h1>
-  <table>
-    <tr><th>Session / Phone Number</th><th>Status</th><th>Last Active</th><th></th></tr>
-    {% for s in sessions %}
-    <tr>
-      <td>{{ s.session_id }}</td>
-      <td>
+  <header>
+    <div class="header-top">
+      <div class="brand">
+        <div class="brand-icon">🏭</div>
+        <div>
+          <h1>{{ company_name }} — Support Dashboard</h1>
+          <p>WhatsApp AI Chatbot · Conversation Monitor</p>
+        </div>
+      </div>
+      <div class="live-dot">Live</div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="num">{{ sessions|length }}</div>
+        <div class="label">Total Conversations</div>
+      </div>
+      <div class="stat-card alert">
+        <div class="num">{{ sessions|selectattr('status', 'equalto', 'escalated')|list|length }}</div>
+        <div class="label">Needs Human Attention</div>
+      </div>
+      <div class="stat-card">
+        <div class="num">{{ sessions|selectattr('status', 'equalto', 'bot')|list|length }}</div>
+        <div class="label">Bot Handling</div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <h2>All Conversations</h2>
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Search by number or session…">
+      </div>
+    </div>
+
+    {% if sessions|length == 0 %}
+    <div class="empty-state">
+      <div class="icon">💬</div>
+      <p>No conversations yet. Once someone messages your WhatsApp number, it'll show up here.</p>
+    </div>
+    {% else %}
+    <div class="session-list" id="sessionList">
+      {% for s in sessions %}
+      <a href="/admin/{{ s.session_id }}" class="session-card {{ 'needs-human' if s.status == 'escalated' else '' }}" data-search="{{ s.session_id|lower }}">
+        <div class="session-avatar">{{ '⚠️' if s.status == 'escalated' else '👤' }}</div>
+        <div class="session-info">
+          <div class="session-id">{{ s.session_id }}</div>
+          <div class="session-time">Last active: {{ s.last_active }}</div>
+        </div>
         {% if s.status == 'escalated' %}
           <span class="badge badge-escalated">Needs Human</span>
         {% else %}
-          <span class="badge badge-bot">Bot handling</span>
+          <span class="badge badge-bot">Bot Handling</span>
         {% endif %}
-      </td>
-      <td>{{ s.last_active }}</td>
-      <td><a href="/admin/{{ s.session_id }}">View chat →</a></td>
-    </tr>
-    {% endfor %}
-  </table>
+        <span class="arrow">→</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </main>
+
+<script>
+  const searchInput = document.getElementById("searchInput");
+  const sessionList = document.getElementById("sessionList");
+  if (searchInput && sessionList) {
+    searchInput.addEventListener("input", () => {
+      const q = searchInput.value.toLowerCase();
+      sessionList.querySelectorAll(".session-card").forEach(card => {
+        const match = card.dataset.search.includes(q);
+        card.style.display = match ? "flex" : "none";
+      });
+    });
+  }
+</script>
 </body>
 </html>

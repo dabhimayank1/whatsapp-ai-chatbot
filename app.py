@@ -361,13 +361,13 @@ def handle_incoming_message(session_id: str, user_message: str):
 @app.route("/admin")
 def admin_dashboard():
     sessions = database.get_all_sessions()
-    return render_template("admin.html", sessions=sessions)
+    return render_template("admin.html", sessions=sessions, company_name=ai_engine.COMPANY_NAME)
 
 
 @app.route("/admin/<session_id>")
 def admin_session(session_id):
     messages = database.get_all_messages_for_session(session_id)
-    return render_template("admin_session.html", session_id=session_id, messages=messages)
+    return render_template("admin_session.html", session_id=session_id, messages=messages, company_name=ai_engine.COMPANY_NAME)
 
 
 @app.route("/admin/<session_id>/resolve", methods=["POST"])
