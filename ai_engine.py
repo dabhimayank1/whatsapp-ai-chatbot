@@ -18,7 +18,7 @@ WELCOME_TEMPLATE = os.getenv(
 
 # Using Google Gemini (free tier, no credit card required) instead of a paid API.
 # Get a free key at: https://aistudio.google.com/apikey
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 # Keywords (Hindi + English + Hinglish) that mean "connect me to a real person"

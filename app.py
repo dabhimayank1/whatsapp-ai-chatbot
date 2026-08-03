@@ -36,6 +36,13 @@ database.init_db()
 # ---------------------------------------------------------------------------
 # 1) BROWSER DEMO (no WhatsApp/Twilio account needed - test right now)
 # ---------------------------------------------------------------------------
+@app.route("/debug-env-list")
+def debug_env_list():
+    keys = sorted(os.environ.keys())
+    relevant = [k for k in keys if "TWILIO" in k.upper() or "GEMINI" in k.upper() or "COMPANY" in k.upper()]
+    return jsonify({"likely_relevant_names": relevant})
+
+
 @app.route("/")
 def demo_chat():
     if "session_id" not in session:
