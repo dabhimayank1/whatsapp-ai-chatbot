@@ -35,26 +35,6 @@ database.init_db()
 # ---------------------------------------------------------------------------
 # 1) BROWSER DEMO (no WhatsApp/Twilio account needed - test right now)
 # ---------------------------------------------------------------------------
-@app.route("/debug-env-list")
-def debug_env_list():
-    # Only variable NAMES, never values - safe to view
-    keys = sorted(os.environ.keys())
-    relevant = [k for k in keys if "ANTHROPIC" in k.upper() or "API" in k.upper() or "TWILIO" in k.upper() or "COMPANY" in k.upper()]
-    return jsonify({"all_env_var_names": keys, "likely_relevant": relevant})
-
-
-@app.route("/debug-env")
-def debug_env():
-    key = os.getenv("ANTHROPIC_API_KEY")
-    if not key:
-        return jsonify({"anthropic_key_found": False, "message": "ANTHROPIC_API_KEY is NOT set in this environment."})
-    return jsonify({
-        "anthropic_key_found": True,
-        "key_preview": key[:10] + "..." + key[-4:],
-        "key_length": len(key)
-    })
-
-
 @app.route("/")
 def demo_chat():
     if "session_id" not in session:
