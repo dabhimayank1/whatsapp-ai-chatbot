@@ -17,6 +17,7 @@ Run:
 
 import os
 import uuid
+import threading
 import requests
 from flask import Flask, request, render_template, jsonify, session, redirect, url_for
 from dotenv import load_dotenv
@@ -99,23 +100,59 @@ def whatsapp_webhook():
     """
     Twilio sends form-encoded POST data here for every WhatsApp message.
     Docs: https://www.twilio.com/docs/whatsapp/api
-    """
-    from twilio.twiml.messaging_response import MessagingResponse
 
+    IMPORTANT: Twilio only waits ~15 seconds for a webhook response. If the AI
+    (especially a free-tier model under load) takes longer, Twilio gives up and
+    the user never receives a reply on WhatsApp - even though our server finishes
+    the work and saves it to the database.
+
+    Fix: acknowledge Twilio immediately with an empty response, then generate the
+    AI reply in a background thread and send it separately via the Twilio REST API.
+    """
     incoming_msg = request.values.get("Body", "").strip()
     from_number = request.values.get("From", "unknown")  # e.g. whatsapp:+91xxxxxxxxxx
     num_media = int(request.values.get("NumMedia", "0"))
+    media_url = request.values.get("MediaUrl0")
+    media_type = request.values.get("MediaContentType0", "application/pdf")
 
-    if num_media > 0:
-        media_url = request.values.get("MediaUrl0")
-        media_type = request.values.get("MediaContentType0", "application/pdf")
-        reply = handle_incoming_media(from_number, incoming_msg, media_url, media_type)
-    else:
-        reply, _escalated = handle_incoming_message(from_number, incoming_msg)
+    thread = threading.Thread(
+        target=_process_and_send_whatsapp_reply,
+        args=(from_number, incoming_msg, num_media, media_url, media_type),
+        daemon=True,
+    )
+    thread.start()
 
-    twiml = MessagingResponse()
-    twiml.message(reply)
-    return str(twiml)
+    # Respond to Twilio immediately with empty TwiML so it doesn't time out
+    return ('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', 200,
+            {"Content-Type": "text/xml"})
+
+
+def _process_and_send_whatsapp_reply(from_number, incoming_msg, num_media, media_url, media_type):
+    """Runs in a background thread - generates the reply, then sends it via Twilio's API."""
+    try:
+        if num_media > 0:
+            reply = handle_incoming_media(from_number, incoming_msg, media_url, media_type)
+        else:
+            reply, _escalated = handle_incoming_message(from_number, incoming_msg)
+        _send_whatsapp_message(from_number, reply)
+    except Exception as e:
+        _send_whatsapp_message(from_number, f"⚠️ Kuch error aa gaya, please try again: {e}")
+
+
+def _send_whatsapp_message(to_number: str, body: str):
+    """Sends a WhatsApp message via Twilio's REST API (not the webhook TwiML response)."""
+    from twilio.rest import Client
+
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_whatsapp = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+
+    if not account_sid or not auth_token:
+        print("Twilio credentials missing - cannot send message")
+        return
+
+    client = Client(account_sid, auth_token)
+    client.messages.create(from_=from_whatsapp, to=to_number, body=body)
 
 
 def handle_incoming_media(session_id: str, caption: str, media_url: str, media_type: str) -> str:
