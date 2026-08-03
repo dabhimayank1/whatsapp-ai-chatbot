@@ -129,18 +129,26 @@ def whatsapp_webhook():
 
 def _process_and_send_whatsapp_reply(from_number, incoming_msg, num_media, media_url, media_type):
     """Runs in a background thread - generates the reply, then sends it via Twilio's API."""
+    import traceback
     try:
         if num_media > 0:
             reply = handle_incoming_media(from_number, incoming_msg, media_url, media_type)
         else:
             reply, _escalated = handle_incoming_message(from_number, incoming_msg)
+        print(f"[webhook] Generated reply for {from_number}: {reply[:80]}...")
         _send_whatsapp_message(from_number, reply)
     except Exception as e:
-        _send_whatsapp_message(from_number, f"⚠️ Kuch error aa gaya, please try again: {e}")
+        print(f"[webhook] ERROR generating/sending reply: {e}")
+        traceback.print_exc()
+        try:
+            _send_whatsapp_message(from_number, f"⚠️ Kuch error aa gaya, please try again.")
+        except Exception:
+            traceback.print_exc()
 
 
 def _send_whatsapp_message(to_number: str, body: str):
     """Sends a WhatsApp message via Twilio's REST API (not the webhook TwiML response)."""
+    import traceback
     from twilio.rest import Client
 
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
@@ -148,11 +156,16 @@ def _send_whatsapp_message(to_number: str, body: str):
     from_whatsapp = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
 
     if not account_sid or not auth_token:
-        print("Twilio credentials missing - cannot send message")
+        print("[webhook] Twilio credentials missing (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN) - cannot send message")
         return
 
-    client = Client(account_sid, auth_token)
-    client.messages.create(from_=from_whatsapp, to=to_number, body=body)
+    try:
+        client = Client(account_sid, auth_token)
+        msg = client.messages.create(from_=from_whatsapp, to=to_number, body=body)
+        print(f"[webhook] Message sent successfully. SID: {msg.sid}, status: {msg.status}")
+    except Exception as e:
+        print(f"[webhook] FAILED to send WhatsApp message via Twilio: {e}")
+        traceback.print_exc()
 
 
 def handle_incoming_media(session_id: str, caption: str, media_url: str, media_type: str) -> str:
