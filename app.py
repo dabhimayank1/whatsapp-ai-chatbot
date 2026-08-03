@@ -102,6 +102,132 @@ def api_send_file():
 # ---------------------------------------------------------------------------
 # 2) REAL WHATSAPP WEBHOOK (Twilio WhatsApp Sandbox / Business API)
 # ---------------------------------------------------------------------------
+@app.route("/meta-webhook", methods=["GET"])
+def meta_webhook_verify():
+    """
+    Meta calls this with GET once, to verify your webhook, when you paste the URL
+    into the Meta for Developers > WhatsApp > Configuration > Webhook field.
+    """
+    verify_token = os.getenv("META_VERIFY_TOKEN", "changeme123")
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+
+    if mode == "subscribe" and token == verify_token:
+        return challenge, 200
+    return "Verification failed", 403
+
+
+@app.route("/meta-webhook", methods=["POST"])
+def meta_webhook_receive():
+    """
+    Meta (WhatsApp Cloud API - FREE, no Twilio needed) sends incoming messages here as JSON.
+    Docs: https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        entry = data["entry"][0]
+        change = entry["changes"][0]["value"]
+        messages = change.get("messages")
+        if not messages:
+            return jsonify({"status": "ignored"}), 200  # e.g. delivery/read status updates
+
+        msg = messages[0]
+        from_number = msg["from"]  # e.g. "919876543210" (no 'whatsapp:' prefix, no '+')
+        msg_type = msg.get("type", "text")
+
+        if msg_type == "text":
+            incoming_msg = msg["text"]["body"]
+            thread = threading.Thread(
+                target=_process_and_send_meta_reply,
+                args=(from_number, incoming_msg, None, None),
+                daemon=True,
+            )
+            thread.start()
+        elif msg_type in ("document", "image"):
+            media_id = msg[msg_type]["id"]
+            caption = msg[msg_type].get("caption", "")
+            mime_type = msg[msg_type].get("mime_type", "application/pdf")
+            thread = threading.Thread(
+                target=_process_and_send_meta_reply,
+                args=(from_number, caption, media_id, mime_type),
+                daemon=True,
+            )
+            thread.start()
+
+    except (KeyError, IndexError, TypeError) as e:
+        print(f"[meta-webhook] Ignoring non-message event or parse issue: {e}", flush=True)
+
+    return jsonify({"status": "received"}), 200
+
+
+def _process_and_send_meta_reply(from_number, caption_or_text, media_id, mime_type):
+    """Runs in a background thread - generates reply, sends via Meta Graph API."""
+    import traceback
+    session_id = f"whatsapp:+{from_number}"
+    try:
+        if media_id:
+            file_bytes = _download_meta_media(media_id)
+            history = database.get_history(session_id)
+            if not history:
+                welcome = ai_engine.get_welcome_message()
+                database.save_message(session_id, "bot", welcome)
+                history = database.get_history(session_id)
+            database.save_message(session_id, "user", f"📎 [attachment]" + (f"\n{caption_or_text}" if caption_or_text else ""))
+            reply = ai_engine.get_document_ai_response(caption_or_text, file_bytes, mime_type, history)
+            database.save_message(session_id, "bot", reply)
+        else:
+            reply, _escalated = handle_incoming_message(session_id, caption_or_text)
+        print(f"[meta-webhook] Generated reply for {from_number}: {reply[:80]}...", flush=True)
+        _send_meta_whatsapp_message(from_number, reply)
+    except Exception as e:
+        print(f"[meta-webhook] ERROR: {e}", flush=True)
+        traceback.print_exc()
+        try:
+            _send_meta_whatsapp_message(from_number, "⚠️ Kuch error aa gaya, please try again.")
+        except Exception:
+            traceback.print_exc()
+
+
+def _download_meta_media(media_id: str) -> bytes:
+    """Meta gives a media ID, not a direct URL. Two-step download: get URL, then fetch it."""
+    token = os.getenv("META_ACCESS_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"}
+    meta_info = requests.get(f"https://graph.facebook.com/v20.0/{media_id}", headers=headers, timeout=20).json()
+    media_url = meta_info["url"]
+    file_resp = requests.get(media_url, headers=headers, timeout=30)
+    return file_resp.content
+
+
+def _send_meta_whatsapp_message(to_number: str, body: str):
+    """Sends a WhatsApp message via Meta's official Cloud API (free for replies)."""
+    import traceback
+    token = os.getenv("META_ACCESS_TOKEN")
+    phone_number_id = os.getenv("META_PHONE_NUMBER_ID")
+
+    if not token or not phone_number_id:
+        print("[meta-webhook] Missing META_ACCESS_TOKEN / META_PHONE_NUMBER_ID - cannot send message", flush=True)
+        return
+
+    url = f"https://graph.facebook.com/v20.0/{phone_number_id}/messages"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": "text",
+        "text": {"body": body},
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=20)
+        if resp.status_code == 200:
+            print(f"[meta-webhook] Message sent successfully to {to_number}", flush=True)
+        else:
+            print(f"[meta-webhook] FAILED to send ({resp.status_code}): {resp.text}", flush=True)
+    except Exception as e:
+        print(f"[meta-webhook] FAILED to send: {e}", flush=True)
+        traceback.print_exc()
+
+
 @app.route("/webhook", methods=["POST"])
 def whatsapp_webhook():
     """

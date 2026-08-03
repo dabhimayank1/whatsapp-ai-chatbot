@@ -57,8 +57,43 @@ Admin panel (sari chat history + "needs human" flags dekhne ke liye):
 
 ## 📲 Connect to REAL WhatsApp (Production) — Full Step-by-Step
 
-Instagram par shareable link chahiye jo click karte hi **real WhatsApp** khole → uske liye 3 cheezein chahiye:
-**(1) Backend kahi public host ho, (2) Twilio WhatsApp number, (3) us number ka `wa.me` link.**
+⚠️ **Important cost note:** Meta khud "service conversations" (jab customer aapko pehle message kare aur aap 24-ghante ke andar reply karo) ke liye **koi charge nahi leta — ye unlimited free hai**. Twilio ek middleman/BSP hai jo apni fees leta hai (trial credit khatam hone ke baad paisa maangta hai). Isliye **Meta ka apna WhatsApp Cloud API seedha use karna** best hai agar budget nahi hai.
+
+### 🆓 RECOMMENDED: Meta WhatsApp Cloud API (Free, No Twilio, No Billing)
+
+**Step 1 — Meta for Developers app banao**
+1. https://developers.facebook.com/ pe jao, Facebook account se login karo
+2. **My Apps → Create App** → type: **"Business"** select karo
+3. App create hone ke baad, **Add Product** me **WhatsApp** dhundo aur **Set up** karo
+
+**Step 2 — Free test number aur token lo**
+1. WhatsApp product ke **"API Setup"** (ya "Getting Started") tab me:
+   - Ek **free test phone number** already milta hai (Meta ka apna number)
+   - Ek **Temporary Access Token** milega (24 ghante valid, baad me permanent token bana sakte ho)
+   - **Phone Number ID** bhi yahi dikhega
+2. Isi page pe **"To" number field** me apna khud ka WhatsApp number add karo (verify karna padega OTP se) — free test number sirf **5 pre-added numbers** tak message bhej sakta hai, isliye apna number yahin add karo
+
+**Step 3 — Render pe environment variables add karo**
+- `META_ACCESS_TOKEN` → wahi temporary token
+- `META_PHONE_NUMBER_ID` → wahi Phone Number ID
+- `META_VERIFY_TOKEN` → khud koi bhi secret word bana lo (jaise `mysecret123`) — isse aage webhook verify hoga
+
+**Step 4 — Webhook connect karo**
+1. WhatsApp product ke **"Configuration"** tab me jao
+2. **Webhook** section me **Edit** dabao:
+   - **Callback URL**: `https://whatsapp-ai-chatbot-rve3.onrender.com/meta-webhook`
+   - **Verify Token**: wahi jo `META_VERIFY_TOKEN` me daala tha
+3. **Verify and Save** dabao (agar sab sahi hai to turant verify ho jayega ✅)
+4. Neeche **"Webhook fields"** me **messages** ko **Subscribe** karo
+
+**Step 5 — Test karo**
+Apne (verified) phone se us Meta test number pe WhatsApp message bhejo ("hi") — bot ka reply aana chahiye, **bilkul free**! 🎉
+
+⚠️ **Note:** Temporary token 24 ghante me expire ho jaata hai testing ke liye. Permanent token banane ke liye Meta Business verification chahiye hoti hai (free hai, bas kuch business details verify karni padti hain) — jab production/public launch karna ho tab ye karna.
+
+---
+
+### Option B — Twilio (agar Meta setup complicated lage, lekin paid hai)
 
 ### Step 1 — Backend ko Render.com par FREE deploy karo
 
