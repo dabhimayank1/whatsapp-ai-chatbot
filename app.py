@@ -33,6 +33,21 @@ database.init_db()
 
 
 # ---------------------------------------------------------------------------
+# DIAGNOSTIC ROUTE - check if ANTHROPIC_API_KEY is actually loaded (safe, masked)
+# ---------------------------------------------------------------------------
+@app.route("/debug-env")
+def debug_env():
+    key = os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        return jsonify({"anthropic_key_found": False, "message": "ANTHROPIC_API_KEY is NOT set in this environment."})
+    return jsonify({
+        "anthropic_key_found": True,
+        "key_preview": key[:10] + "..." + key[-4:],
+        "key_length": len(key)
+    })
+
+
+# ---------------------------------------------------------------------------
 # 1) BROWSER DEMO (no WhatsApp/Twilio account needed - test right now)
 # ---------------------------------------------------------------------------
 @app.route("/")
