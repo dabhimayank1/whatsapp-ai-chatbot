@@ -35,6 +35,12 @@ database.init_db()
 # ---------------------------------------------------------------------------
 # DIAGNOSTIC ROUTE - check if ANTHROPIC_API_KEY is actually loaded (safe, masked)
 # ---------------------------------------------------------------------------
+@app.route("/debug-env-list")
+def debug_env_list():
+    keys = sorted(os.environ.keys())
+    relevant = [k for k in keys if "ANTHROPIC" in k.upper() or "API" in k.upper() or "TWILIO" in k.upper() or "COMPANY" in k.upper()]
+    return jsonify({"all_env_var_names": keys, "likely_relevant": relevant})
+
 @app.route("/debug-env")
 def debug_env():
     key = os.getenv("ANTHROPIC_API_KEY")
