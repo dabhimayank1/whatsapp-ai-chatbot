@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Admin - Chat Sessions</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 30px; }
+  h1 { color: #075e54; }
+  table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  th, td { padding: 12px 14px; border-bottom: 1px solid #eee; text-align: left; }
+  th { background: #075e54; color: white; }
+  tr:hover { background: #f9f9f9; }
+  .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; color: white; }
+  .badge-bot { background: #4caf50; }
+  .badge-escalated { background: #e53935; }
+  a { color: #075e54; text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>📋 Chat Sessions ({{ sessions|length }})</h1>
+  <table>
+    <tr><th>Session / Phone Number</th><th>Status</th><th>Last Active</th><th></th></tr>
+    {% for s in sessions %}
+    <tr>
+      <td>{{ s.session_id }}</td>
+      <td>
+        {% if s.status == 'escalated' %}
+          <span class="badge badge-escalated">Needs Human</span>
+        {% else %}
+          <span class="badge badge-bot">Bot handling</span>
+        {% endif %}
+      </td>
+      <td>{{ s.last_active }}</td>
+      <td><a href="/admin/{{ s.session_id }}">View chat →</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ company_name }} - WhatsApp AI Chatbot Demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="phone-frame">
+    <div class="chat-header">
+      <div class="avatar">🏭</div>
+      <div class="header-info">
+        <div class="header-name">{{ company_name }}</div>
+        <div class="header-status" id="statusText">online</div>
+      </div>
+    </div>
+
+    <div class="chat-body" id="chatBody"></div>
+
+    <div class="chat-input-bar">
+      <button id="attachBtn" title="Attach PDF or image">📎</button>
+      <input type="file" id="fileInput" accept=".pdf,image/*" style="display:none">
+      <input type="text" id="msgInput" placeholder="Type a message or attach a PDF" autocomplete="off">
+      <button id="sendBtn">➤</button>
+    </div>
+  </div>
+  <div id="filePreview" style="max-width:420px; font-size:12px; color:#075e54; margin-top:6px;"></div>
+
+  <p class="hint">This is a browser demo of the WhatsApp bot logic. Real WhatsApp needs Twilio/Meta setup (see README).</p>
+
+<script>
+const sessionId = "{{ session_id }}";
+const chatBody = document.getElementById("chatBody");
+const msgInput = document.getElementById("msgInput");
+const sendBtn = document.getElementById("sendBtn");
+const statusText = document.getElementById("statusText");
+
+function addBubble(text, sender) {
+  const bubble = document.createElement("div");
+  bubble.className = "bubble " + (sender === "user" ? "bubble-user" : "bubble-bot");
+  const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  bubble.innerHTML = `<div class="bubble-text"></div><div class="bubble-time">${time}</div>`;
+  bubble.querySelector(".bubble-text").textContent = text;
+  chatBody.appendChild(bubble);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+const attachBtn = document.getElementById("attachBtn");
+const fileInput = document.getElementById("fileInput");
+const filePreview = document.getElementById("filePreview");
+let selectedFile = null;
+
+attachBtn.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => {
+  selectedFile = fileInput.files[0] || null;
+  filePreview.textContent = selectedFile ? "📎 Ready to send: " + selectedFile.name : "";
+});
+
+async function sendMessage() {
+  const text = msgInput.value.trim();
+  const fileToSend = selectedFile;
+  if (!text && !fileToSend) return;
+
+  msgInput.value = "";
+  selectedFile = null;
+  fileInput.value = "";
+  filePreview.textContent = "";
+  sendBtn.disabled = true;
+
+  addBubble(fileToSend ? `📎 ${fileToSend.name}${text ? "\n" + text : ""}` : text, "user");
+  statusText.textContent = fileToSend ? "reading document..." : "typing...";
+
+  try {
+    let res;
+    if (fileToSend) {
+      const formData = new FormData();
+      formData.append("file", fileToSend);
+      formData.append("message", text);
+      formData.append("session_id", sessionId);
+      res = await fetch("/api/send_file", { method: "POST", body: formData });
+    } else {
+      res = await fetch("/api/send", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({session_id: sessionId, message: text})
+      });
+    }
+    const data = await res.json();
+    addBubble(data.reply, "bot");
+    statusText.textContent = data.escalated ? "connecting to team..." : "online";
+  } catch (e) {
+    addBubble("⚠️ Connection error. Please make sure the server is running.", "bot");
+    statusText.textContent = "online";
+  }
+  sendBtn.disabled = false;
+}
+
+sendBtn.addEventListener("click", sendMessage);
+msgInput.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
+
+// show first welcome bubble immediately on page load
+window.addEventListener("load", () => {
+  addBubble("Hello! Welcome to {{ company_name }}. How can I help you today?", "bot");
+});
+</script>
+</body>
+</html>
