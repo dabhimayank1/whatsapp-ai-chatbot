@@ -8,7 +8,7 @@ ai_engine.py
 """
 
 import os
-from anthropic import Anthropic
+import requests
 import knowledge_base
 
 COMPANY_NAME = os.getenv("COMPANY_NAME", "XYZ Industry")
@@ -16,14 +16,10 @@ WELCOME_TEMPLATE = os.getenv(
     "WELCOME_MESSAGE", "Hello! Welcome to {company}. How can I help you today?"
 )
 
-_client = None
-
-
-def _get_client():
-    global _client
-    if _client is None:
-        _client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    return _client
+# Using Google Gemini (free tier, no credit card required) instead of a paid API.
+# Get a free key at: https://aistudio.google.com/apikey
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 # Keywords (Hindi + English + Hinglish) that mean "connect me to a real person"
 ESCALATION_KEYWORDS = [
@@ -77,26 +73,35 @@ def get_ai_response(user_message: str, history: list) -> str:
     """
     Plain text reply. history: list of {"sender": "user"/"bot", "message": "..."}
     """
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
         return (
-            "⚠️ AI abhi configure nahi hua hai. Please set ANTHROPIC_API_KEY in your .env file. "
-            "(Ye ek placeholder reply hai.)"
+            "⚠️ AI abhi configure nahi hua hai. Please set GEMINI_API_KEY in your .env file. "
+            "(Ye ek placeholder reply hai. Free key: https://aistudio.google.com/apikey)"
         )
 
-    messages = []
-    for h in history[-10:]:  # last 10 messages as context
-        role = "user" if h["sender"] == "user" else "assistant"
-        messages.append({"role": role, "content": h["message"]})
-    messages.append({"role": "user", "content": user_message})
+    contents = []
+    for h in history[-10:]:
+        role = "user" if h["sender"] == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": h["message"]}]})
+    contents.append({"role": "user", "parts": [{"text": user_message}]})
+
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": contents,
+    }
 
     try:
-        response = _get_client().messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=400,
-            system=SYSTEM_PROMPT,
-            messages=messages,
+        resp = requests.post(
+            f"{GEMINI_API_URL}?key={api_key}",
+            json=payload,
+            timeout=30,
         )
-        return response.content[0].text
+        data = resp.json()
+        if resp.status_code != 200:
+            err_msg = data.get("error", {}).get("message", str(data))
+            return f"⚠️ AI se reply lene me error aaya ({resp.status_code}): {err_msg}"
+        return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
         return f"⚠️ AI se reply lene me error aaya: {e}"
 
@@ -104,46 +109,47 @@ def get_ai_response(user_message: str, history: list) -> str:
 def get_document_ai_response(caption: str, file_bytes: bytes, media_type: str, history: list) -> str:
     """
     Handles a PDF or image attachment sent by the user (e.g. via WhatsApp media message).
-    Sends the actual file content to Claude natively so it can read/summarize/answer about it.
+    Sends the actual file content to Gemini natively so it can read/summarize/answer about it.
     """
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
         return (
-            "⚠️ AI abhi configure nahi hua hai. Please set ANTHROPIC_API_KEY in your .env file. "
-            "(Ye ek placeholder reply hai.)"
+            "⚠️ AI abhi configure nahi hua hai. Please set GEMINI_API_KEY in your .env file. "
+            "(Ye ek placeholder reply hai. Free key: https://aistudio.google.com/apikey)"
         )
 
     import base64
     b64_data = base64.b64encode(file_bytes).decode("utf-8")
+    mime_type = media_type or "application/pdf"
 
-    is_pdf = "pdf" in (media_type or "").lower()
-    file_block = (
-        {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64_data}}
-        if is_pdf
-        else {"type": "image", "source": {"type": "base64", "media_type": media_type or "image/jpeg", "data": b64_data}}
-    )
-
-    messages = []
+    contents = []
     for h in history[-10:]:
-        role = "user" if h["sender"] == "user" else "assistant"
-        messages.append({"role": role, "content": h["message"]})
+        role = "user" if h["sender"] == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": h["message"]}]})
 
-    messages.append(
-        {
-            "role": "user",
-            "content": [
-                file_block,
-                {"type": "text", "text": caption or "Please review this attached document and summarize it."},
-            ],
-        }
-    )
+    contents.append({
+        "role": "user",
+        "parts": [
+            {"inline_data": {"mime_type": mime_type, "data": b64_data}},
+            {"text": caption or "Please review this attached document and summarize it."},
+        ],
+    })
+
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": contents,
+    }
 
     try:
-        response = _get_client().messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=500,
-            system=SYSTEM_PROMPT,
-            messages=messages,
+        resp = requests.post(
+            f"{GEMINI_API_URL}?key={api_key}",
+            json=payload,
+            timeout=45,
         )
-        return response.content[0].text
+        data = resp.json()
+        if resp.status_code != 200:
+            err_msg = data.get("error", {}).get("message", str(data))
+            return f"⚠️ Document padhne me error aaya ({resp.status_code}): {err_msg}"
+        return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
         return f"⚠️ Document padhne me error aaya: {e}"

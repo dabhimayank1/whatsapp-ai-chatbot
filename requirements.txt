@@ -1,6 +1,5 @@
 Flask==3.0.3
 python-dotenv==1.0.1
-anthropic>=0.120.0
 twilio==9.3.2
 requests==2.32.3
 gunicorn==22.0.0

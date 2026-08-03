@@ -40,7 +40,8 @@ pip install -r requirements.txt
 
 # 3. Setup environment file
 cp .env.example .env
-# Open .env and paste your ANTHROPIC_API_KEY (get one free at https://console.anthropic.com/)
+# Open .env and paste your GEMINI_API_KEY (100% FREE, no card needed)
+# Get it here: https://aistudio.google.com/apikey
 
 # 4. Run the server
 python app.py
@@ -67,7 +68,7 @@ Instagram par shareable link chahiye jo click karte hi **real WhatsApp** khole â
 4. Settings:
    - **Build Command:** `pip install -r requirements.txt`
    - **Start Command:** `gunicorn app:app --bind 0.0.0.0:$PORT` (already `Procfile` me hai)
-   - **Environment Variables** me add karo: `ANTHROPIC_API_KEY`, `COMPANY_NAME`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` (jo `.env.example` me hain)
+   - **Environment Variables** me add karo: `GEMINI_API_KEY` (FREE - https://aistudio.google.com/apikey), `COMPANY_NAME`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` (jo `.env.example` me hain)
 5. Deploy hone ke baad Render ek public URL dega, jaise:
    ```
    https://whatsapp-ai-chatbot.onrender.com
