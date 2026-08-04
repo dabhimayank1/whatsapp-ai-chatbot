@@ -4,7 +4,9 @@ ai_engine.py
 1) detect_escalation()  -> checks if user wants to talk to a real human /
                             client / management directly (Hindi + English keywords)
 2) get_welcome_message() -> first greeting whenever a new session starts
-3) get_ai_response()     -> normal AI (Claude) reply using chat history as context
+3) get_ai_response()     -> normal AI reply using chat history as context
+                            Primary: Groq (free, high-volume, runs Llama models)
+                            Fallback for documents/images: Gemini (native PDF/image reading)
 """
 
 import os
@@ -16,7 +18,12 @@ WELCOME_TEMPLATE = os.getenv(
     "WELCOME_MESSAGE", "Hello! Welcome to {company}. How can I help you today?"
 )
 
-# Using Google Gemini (free tier, no credit card required) instead of a paid API.
+# PRIMARY: Groq - free forever, no credit card, high daily limit (great for multi-business/high-volume use)
+# Get a free key at: https://console.groq.com/keys
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+# FALLBACK (documents/images only): Google Gemini - free tier, native PDF/image reading
 # Get a free key at: https://aistudio.google.com/apikey
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
@@ -71,56 +78,97 @@ SYSTEM_PROMPT = (
 
 def get_ai_response(user_message: str, history: list) -> str:
     """
-    Plain text reply. history: list of {"sender": "user"/"bot", "message": "..."}
+    Plain text reply via Groq (free, high daily limit - good for multi-business/high-volume use).
+    history: list of {"sender": "user"/"bot", "message": "..."}
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         return (
-            "⚠️ AI abhi configure nahi hua hai. Please set GEMINI_API_KEY in your .env file. "
-            "(Ye ek placeholder reply hai. Free key: https://aistudio.google.com/apikey)"
+            "⚠️ AI abhi configure nahi hua hai. Please set GROQ_API_KEY in your .env file. "
+            "(Ye ek placeholder reply hai. Free key: https://console.groq.com/keys)"
         )
 
-    contents = []
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for h in history[-10:]:
-        role = "user" if h["sender"] == "user" else "model"
-        contents.append({"role": role, "parts": [{"text": h["message"]}]})
-    contents.append({"role": "user", "parts": [{"text": user_message}]})
+        role = "user" if h["sender"] == "user" else "assistant"
+        messages.append({"role": role, "content": h["message"]})
+    messages.append({"role": "user", "content": user_message})
 
-    payload = {
-        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-        "contents": contents,
-    }
+    payload = {"model": GROQ_MODEL, "messages": messages, "max_tokens": 500}
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    try:
-        resp = requests.post(
-            f"{GEMINI_API_URL}?key={api_key}",
-            json=payload,
-            timeout=30,
-        )
-        data = resp.json()
-        if resp.status_code != 200:
-            err_msg = data.get("error", {}).get("message", str(data))
-            return f"⚠️ AI se reply lene me error aaya ({resp.status_code}): {err_msg}"
-        return data["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception as e:
-        return f"⚠️ AI se reply lene me error aaya: {e}"
+    import time
+    last_err = None
+    for attempt in range(3):
+        try:
+            resp = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=30)
+            data = resp.json()
+            if resp.status_code in (503, 429) and attempt < 2:
+                last_err = f"status {resp.status_code}, retrying"
+                time.sleep(2)
+                continue
+            if resp.status_code != 200:
+                err_msg = data.get("error", {}).get("message", str(data))
+                return f"⚠️ AI se reply lene me error aaya ({resp.status_code}): {err_msg}"
+            return data["choices"][0]["message"]["content"]
+        except Exception as e:
+            last_err = e
+            time.sleep(2)
+    return f"⚠️ AI abhi busy hai, please thodi der baad try karein. ({last_err})"
+
+
+def _extract_pdf_text(file_bytes: bytes) -> str:
+    """Extracts text from a PDF locally - completely free, no API calls, no rate limits."""
+    from pypdf import PdfReader
+    import io
+    reader = PdfReader(io.BytesIO(file_bytes))
+    text = ""
+    for page in reader.pages:
+        text += (page.extract_text() or "") + "\n"
+    return text.strip()
 
 
 def get_document_ai_response(caption: str, file_bytes: bytes, media_type: str, history: list) -> str:
     """
     Handles a PDF or image attachment sent by the user (e.g. via WhatsApp media message).
-    Sends the actual file content to Gemini natively so it can read/summarize/answer about it.
+
+    PDFs: text is extracted locally (free, unlimited) then passed to Groq like a normal
+    text message - no per-document API cost, no rate limit concern.
+
+    Images: fall back to Gemini's vision (free tier) since Groq's free tier doesn't
+    reliably support image/document uploads the same way. Only used occasionally
+    (photos are rarer than PDFs), so Gemini's lower free quota is not a bottleneck here.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
+    is_pdf = "pdf" in (media_type or "").lower()
+
+    if is_pdf:
+        try:
+            pdf_text = _extract_pdf_text(file_bytes)
+        except Exception as e:
+            return f"⚠️ PDF padhne me error aaya: {e}"
+
+        if not pdf_text:
+            return (
+                "⚠️ Is PDF se text nahi nikal paya — ho sakta hai ye scanned image PDF ho "
+                "(text-based nahi). Please text-based PDF bhejiye, ya content type/screenshot bhej dijiye."
+            )
+
+        combined_message = (
+            f"[User attached a PDF document. Extracted content below]\n\n{pdf_text[:6000]}\n\n"
+            f"[User's message/question about it]: {caption or 'Please review this document and summarize it.'}"
+        )
+        return get_ai_response(combined_message, history)
+
+    # Image - use Gemini vision as fallback
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
         return (
-            "⚠️ AI abhi configure nahi hua hai. Please set GEMINI_API_KEY in your .env file. "
-            "(Ye ek placeholder reply hai. Free key: https://aistudio.google.com/apikey)"
+            "⚠️ Image padhne ke liye GEMINI_API_KEY bhi configure karni hogi (image support ke liye "
+            "fallback). Free key: https://aistudio.google.com/apikey. PDF documents ke liye ye zaroorat nahi."
         )
 
     import base64
     b64_data = base64.b64encode(file_bytes).decode("utf-8")
-    mime_type = media_type or "application/pdf"
 
     contents = []
     for h in history[-10:]:
@@ -130,8 +178,8 @@ def get_document_ai_response(caption: str, file_bytes: bytes, media_type: str, h
     contents.append({
         "role": "user",
         "parts": [
-            {"inline_data": {"mime_type": mime_type, "data": b64_data}},
-            {"text": caption or "Please review this attached document and summarize it."},
+            {"inline_data": {"mime_type": media_type or "image/jpeg", "data": b64_data}},
+            {"text": caption or "Please review this attached image and describe/answer about it."},
         ],
     })
 
@@ -141,15 +189,11 @@ def get_document_ai_response(caption: str, file_bytes: bytes, media_type: str, h
     }
 
     try:
-        resp = requests.post(
-            f"{GEMINI_API_URL}?key={api_key}",
-            json=payload,
-            timeout=45,
-        )
+        resp = requests.post(f"{GEMINI_API_URL}?key={gemini_key}", json=payload, timeout=45)
         data = resp.json()
         if resp.status_code != 200:
             err_msg = data.get("error", {}).get("message", str(data))
-            return f"⚠️ Document padhne me error aaya ({resp.status_code}): {err_msg}"
+            return f"⚠️ Image padhne me error aaya ({resp.status_code}): {err_msg}"
         return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
-        return f"⚠️ Document padhne me error aaya: {e}"
+        return f"⚠️ Image padhne me error aaya: {e}"

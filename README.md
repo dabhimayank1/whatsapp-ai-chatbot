@@ -40,8 +40,9 @@ pip install -r requirements.txt
 
 # 3. Setup environment file
 cp .env.example .env
-# Open .env and paste your GEMINI_API_KEY (100% FREE, no card needed)
-# Get it here: https://aistudio.google.com/apikey
+# Open .env and paste your GROQ_API_KEY (100% FREE forever, no card needed, high daily limit)
+# Get it here: https://console.groq.com/keys
+# (Optional: GEMINI_API_KEY too, only used as a fallback for reading photos/images)
 
 # 4. Run the server
 python app.py

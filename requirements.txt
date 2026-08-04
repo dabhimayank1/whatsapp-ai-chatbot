@@ -3,3 +3,4 @@ python-dotenv==1.0.1
 twilio==9.3.2
 requests==2.32.3
 gunicorn==22.0.0
+pypdf==4.3.1
