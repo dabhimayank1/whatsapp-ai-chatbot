@@ -62,7 +62,7 @@ const config = {
 
   IG_TOKEN: env("IG_TOKEN"),
   IG_USER_ID: env("IG_USER_ID"),
-  IG_VERIFY_TOKEN: env("IG_VERIFY_TOKEN", "changeme-ig"),
+  IG_VERIFY_TOKEN: env("IG_VERIFY_TOKEN", env("WA_VERIFY_TOKEN", "my-secret-verify-token-123")),
 
   ADMIN_USER: env("ADMIN_USER", "admin"),
   ADMIN_PASSWORD: env("ADMIN_PASSWORD", "admin"),
