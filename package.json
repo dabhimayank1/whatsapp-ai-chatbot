@@ -1,0 +1,25 @@
+{
+  "name": "socialtosales",
+  "version": "1.0.0",
+  "description": "Multi-tenant Instagram Reels to WhatsApp to CRM lead funnel",
+  "type": "module",
+  "main": "src/app.js",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node src/app.js",
+    "seed": "node seedDemo.js",
+    "test": "node testFunnel.js && node testMultitenant.js",
+    "test:funnel": "node testFunnel.js",
+    "test:multitenant": "node testMultitenant.js"
+  },
+  "dependencies": {
+    "cookie-session": "^2.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "groq-sdk": "^0.9.1",
+    "nunjucks": "^3.2.4",
+    "qrcode": "^1.5.4"
+  }
+}

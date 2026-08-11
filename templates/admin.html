@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SocialToSales — {{ display_name }}</title>
+<style>
+  :root{
+    --bg:#f5f4f7;--panel:#fff;--panel2:#eeecf1;--line:#dcd7e2;
+    --ink:#1a1620;--muted:#6b6377;
+    --ig:#c2286a;--wa:#0f7a41;--crm:#9a6410;--sys:#5b5468;
+    --hot:#b83227;--warm:#a06a12;--cold:#5a6b7d;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#131117;--panel:#1b181f;--panel2:#232029;--line:#322d3a;
+          --ink:#ece8f0;--muted:#9a92a6;--ig:#f0709f;--wa:#4ec883;
+          --crm:#e0a94a;--sys:#a79db5;--hot:#f0776a;--warm:#e0b060;--cold:#93a5b8;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);height:100vh;
+       display:flex;flex-direction:column;
+       font:14px/1.55 -apple-system,Segoe UI,Roboto,sans-serif;}
+
+  header{display:flex;align-items:center;gap:14px;padding:10px 18px;
+         background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  header h1{font-size:15px;margin:0;letter-spacing:-.015em;}
+  header .sub{font-size:11.5px;color:var(--muted);}
+  nav{display:flex;gap:3px;margin-left:auto;flex-wrap:wrap;}
+  nav button{padding:6px 12px;border-radius:7px;border:1px solid transparent;
+             background:transparent;color:var(--muted);font-size:13px;
+             font-weight:550;cursor:pointer;font-family:inherit;}
+  nav button:hover{background:var(--panel2);color:var(--ink);}
+  nav button.on{background:var(--panel2);color:var(--ink);border-color:var(--line);}
+  .badge{font-family:var(--mono);font-size:10px;letter-spacing:.09em;
+         padding:3px 8px;border-radius:100px;border:1px solid var(--line);
+         color:var(--muted);text-transform:uppercase;}
+
+  main{flex:1;overflow-y:auto;padding:20px;}
+  .view{display:none;max-width:1180px;margin:0 auto;}
+  .view.on{display:block;}
+  h2{font-size:17px;margin:0 0 3px;letter-spacing:-.02em;}
+  .hint{color:var(--muted);font-size:12.5px;margin:0 0 16px;max-width:70ch;}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+         gap:11px;margin-bottom:22px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+        padding:13px 15px;}
+  .card .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.11em;
+             text-transform:uppercase;color:var(--muted);}
+  .card .val{font-size:23px;font-weight:670;letter-spacing:-.03em;margin-top:2px;
+             font-variant-numeric:tabular-nums;}
+  .card .foot{font-size:11px;color:var(--muted);}
+
+  .funnel{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+          padding:16px;margin-bottom:20px;}
+  .hop{display:grid;grid-template-columns:112px 1fr 60px;gap:11px;
+       align-items:center;padding:4px 0;}
+  .hop .nm{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+           color:var(--muted);}
+  .bar{height:21px;border-radius:5px;background:var(--panel2);overflow:hidden;
+       position:relative;}
+  .fill{height:100%;border-radius:5px;transition:width .35s ease;}
+  .bar .n{position:absolute;left:8px;top:0;line-height:21px;font-size:11.5px;
+          font-weight:650;font-variant-numeric:tabular-nums;}
+  .hop .pc{text-align:right;font-family:var(--mono);font-size:11.5px;
+           font-variant-numeric:tabular-nums;}
+
+  .leaks{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:13px;}
+  .leak{background:var(--panel);border:1px solid var(--line);
+        border-left:3px solid var(--hot);border-radius:10px;padding:14px 16px;}
+  .leak h3{margin:0 0 3px;font-size:13px;}
+  .leak .big{font-size:21px;font-weight:670;}
+  .leak .d{font-size:11.5px;color:var(--muted);margin-top:3px;}
+
+  .tw{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+      overflow:auto;}
+  table{border-collapse:collapse;width:100%;font-size:13px;}
+  th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+     text-transform:uppercase;color:var(--muted);font-weight:600;
+     padding:10px 13px;border-bottom:1px solid var(--line);
+     background:var(--panel2);white-space:nowrap;position:sticky;top:0;}
+  td{padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tbody tr.click{cursor:pointer;}
+  tbody tr.click:hover{background:var(--panel2);}
+  .mono{font-family:var(--mono);font-size:12px;}
+
+  .pill{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.09em;
+        padding:2.5px 8px;border-radius:100px;border:1.5px solid currentColor;
+        white-space:nowrap;}
+  .HOT{color:var(--hot)} .WARM{color:var(--warm)} .COLD{color:var(--cold)}
+  .stage{font-family:var(--mono);font-size:10.5px;padding:2.5px 7px;border-radius:5px;
+         background:var(--panel2);border:1px solid var(--line);white-space:nowrap;}
+
+  .filters{display:flex;gap:8px;margin-bottom:13px;flex-wrap:wrap;align-items:center;}
+  select,input[type=text],input[type=password],textarea{
+    padding:7px 11px;border-radius:8px;font-size:13px;font-family:inherit;
+    border:1px solid var(--line);background:var(--panel);color:var(--ink);}
+  textarea{width:100%;min-height:220px;font-family:var(--mono);font-size:12.5px;
+           line-height:1.6;resize:vertical;}
+  button.act{padding:7px 13px;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel);color:var(--ink);font-size:13px;font-weight:600;
+    cursor:pointer;font-family:inherit;}
+  button.act:hover{background:var(--panel2);}
+  button.primary{background:var(--wa);color:#03210f;border-color:transparent;}
+  button.danger{color:var(--hot);}
+
+  #detail{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;
+          z-index:50;padding:22px;overflow-y:auto;}
+  #detail.on{display:block;}
+  .sheet{max-width:820px;margin:0 auto;background:var(--panel);
+         border:1px solid var(--line);border-radius:14px;overflow:hidden;}
+  .sheet-top{padding:15px 19px;border-bottom:1px solid var(--line);
+             background:var(--panel2);display:flex;align-items:center;
+             gap:11px;flex-wrap:wrap;}
+  .sheet-top .who{font-size:15.5px;font-weight:660;}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;padding:12px 19px;
+         border-bottom:1px solid var(--line);}
+  .chip{font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:5px;
+        background:var(--panel2);border:1px solid var(--line);}
+  .cols{display:grid;grid-template-columns:1fr 1fr;}
+  @media (max-width:720px){.cols{grid-template-columns:1fr;}}
+  .col{padding:15px 19px;}
+  .col+.col{border-left:1px solid var(--line);}
+  .col h4{margin:0 0 11px;font-family:var(--mono);font-size:10px;
+          letter-spacing:.11em;text-transform:uppercase;color:var(--muted);}
+  .ev{display:grid;grid-template-columns:44px 16px 1fr;gap:9px;font-size:12.5px;}
+  .ev .t{font-family:var(--mono);font-size:10.5px;color:var(--muted);
+         padding-top:2px;text-align:right;}
+  .ev .mk{display:flex;flex-direction:column;align-items:center;gap:3px;padding-top:5px;}
+  .dot{width:7px;height:7px;border-radius:50%;flex:none;}
+  .stem{width:1.5px;flex:1;min-height:9px;background:var(--line);}
+  .ev:last-child .stem{display:none;}
+  .ev .tx{padding-bottom:11px;}
+  .ev .tx em{font-style:normal;color:var(--muted);}
+  .d-instagram{background:var(--ig)} .d-whatsapp{background:var(--wa)}
+  .d-crm{background:var(--crm)} .d-sys{background:var(--sys)}
+  .thread{display:flex;flex-direction:column;gap:7px;max-height:330px;overflow-y:auto;}
+  .bub{max-width:85%;padding:7px 10px;border-radius:11px;font-size:12.5px;
+       white-space:pre-wrap;word-wrap:break-word;border:1px solid var(--line);}
+  .bub.user{align-self:flex-start;background:var(--panel2);border-bottom-left-radius:3px;}
+  .bub.assistant,.bub.agent{align-self:flex-end;background:var(--wa);color:#03210f;
+       border-color:transparent;border-bottom-right-radius:3px;}
+  .bub .meta{font-family:var(--mono);font-size:9.5px;opacity:.7;margin-top:3px;}
+  .composer{display:flex;gap:7px;margin-top:10px;}
+  .composer input{flex:1;}
+
+  /* question editor */
+  .qcard{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+         padding:15px 17px;margin-bottom:11px;}
+  .qhead{display:flex;gap:9px;align-items:center;margin-bottom:10px;flex-wrap:wrap;}
+  .qhead .num{font-family:var(--mono);font-size:11px;color:var(--muted);
+              width:20px;flex:none;}
+  .qhead input.qtext{flex:1;min-width:220px;}
+  .qhead input.qkey{width:120px;font-family:var(--mono);}
+  .opts{display:flex;flex-direction:column;gap:6px;margin-left:29px;}
+  .opt{display:flex;gap:7px;align-items:center;}
+  .opt input.oid{width:110px;font-family:var(--mono);font-size:12px;}
+  .opt input.olabel{flex:1;}
+  .opt input.opts-pts{width:66px;font-family:var(--mono);text-align:right;}
+  .opt .rm{cursor:pointer;color:var(--muted);border:none;background:none;
+           font-size:16px;padding:0 4px;}
+  .opt .rm:hover{color:var(--hot);}
+  .qfoot{margin-left:29px;margin-top:8px;display:flex;gap:8px;align-items:center;}
+  .tiny{font-size:11px;color:var(--muted);}
+  .warn{color:var(--hot);font-size:11.5px;}
+  .empty{color:var(--muted);padding:26px;text-align:center;font-size:13px;}
+  form.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+            gap:11px;background:var(--panel);border:1px solid var(--line);
+            border-radius:11px;padding:16px;margin-bottom:16px;}
+  form.grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;
+                  color:var(--muted);}
+  form.grid input,form.grid select{width:100%;}
+  form.grid .full{grid-column:1/-1;}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+         background:var(--wa);color:#03210f;padding:10px 18px;border-radius:9px;
+         font-weight:600;font-size:13px;z-index:99;display:none;}
+  .toast.on{display:block;}
+</style>
+</head>
+<body data-role="{{ role }}" data-tenant="{{ tenant_id }}">
+
+<header>
+  <div>
+    <h1>SocialToSales</h1>
+    <div class="sub" id="whoami">{{ display_name }}</div>
+  </div>
+  <span class="badge">{{ role }}</span>
+  {% if role == 'admin' %}
+  <select id="tenantPick" title="View one client"><option value="">All clients</option></select>
+  {% endif %}
+  <nav>
+    <button data-v="funnel" class="on">Funnel</button>
+    <button data-v="leads">Leads</button>
+    <button data-v="questions">Questions</button>
+    <button data-v="knowledge">Knowledge</button>
+    <button data-v="campaigns">Campaigns</button>
+    {% if role == 'admin' %}<button data-v="clients">Clients</button>{% endif %}
+  </nav>
+  {% if role == 'admin' %}<button class="act" id="tick">⟳</button>{% endif %}
+  <a href="/logout" class="act" style="text-decoration:none;padding:7px 12px;
+     border-radius:8px;border:1px solid var(--line);font-size:13px;">Sign out</a>
+</header>
+
+<main>
+  <section class="view on" id="v-funnel">
+    <h2>Funnel</h2>
+    <p class="hint">Distinct leads that reached each stage, as a share of everyone
+      who entered. The two per-hop rates that matter are below.</p>
+    <div class="cards" id="cards"></div>
+    <div class="funnel" id="bars"></div>
+    <div class="leaks" id="leaks"></div>
+    <div style="margin-top:20px" id="variantBox"></div>
+  </section>
+
+  <section class="view" id="v-leads">
+    <h2>Leads</h2>
+    <p class="hint">Sorted by score. Click a row for the full cross-platform timeline.</p>
+    <div class="filters">
+      <select id="fBand"><option value="">All bands</option>
+        <option>HOT</option><option>WARM</option><option>COLD</option></select>
+      <select id="fStage"><option value="">All stages</option></select>
+      <button class="act" id="refresh">Refresh</button>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th>Score</th><th>Name</th><th>Contact</th><th>Stage</th>
+        <th>Answers</th><th>Campaign</th><th class="tcol">Client</th><th>Ref</th></tr></thead>
+      <tbody id="leadRows"></tbody>
+    </table></div>
+  </section>
+
+  <section class="view" id="v-questions">
+    <h2>Qualification questions</h2>
+    <p class="hint">These are what the bot asks on WhatsApp. Buttons for 3 options
+      or fewer, a list for up to 10. Points decide the lead score — the total is
+      normalised to 100, so ask three questions or eight, the bands still work.</p>
+    <div class="filters">
+      <select id="tplPick"><option value="">Start from a template…</option></select>
+      <button class="act" id="applyTpl">Apply template</button>
+      <span style="flex:1"></span>
+      <span class="tiny" id="maxScore"></span>
+      <button class="act" id="addQ">+ Question</button>
+      <button class="act primary" id="saveQ">Save questions</button>
+    </div>
+    <div id="qList"></div>
+  </section>
+
+  <section class="view" id="v-knowledge">
+    <h2>Knowledge base</h2>
+    <p class="hint">The bot's <b>only</b> source of truth — it cannot say anything
+      that isn't written here, and it refuses everything outside your domain.
+      Prices, timings, address, policies, FAQs.</p>
+    <div class="filters">
+      <label class="tiny">Domain lock&nbsp;
+        <input type="text" id="domainName" style="width:280px"
+               placeholder="e.g. gym, fitness training and memberships"></label>
+      <span style="flex:1"></span>
+      <button class="act primary" id="saveKb">Save</button>
+    </div>
+    <textarea id="kb" placeholder="## About&#10;We are…&#10;&#10;## Timings&#10;…"></textarea>
+  </section>
+
+  <section class="view" id="v-campaigns">
+    <h2>Campaigns</h2>
+    <p class="hint">One row per reel. The keyword triggers the auto-DM. Two-step
+      keeps the link out of the first message so it lands in the real inbox.</p>
+    <form class="grid" id="campForm">
+      <label>Reel media ID<input name="media_id" required placeholder="17912345678901234"></label>
+      <label>Name<input name="name" required placeholder="Satellite 3BHK walkthrough"></label>
+      <label>Trigger keywords<input name="keywords" placeholder="price,info,details"></label>
+      <label>What it's about<input name="property_ref" placeholder="3BHK Satellite"></label>
+      <label>DM strategy<select name="dm_strategy">
+        <option value="two_step">Two-step (no link first)</option>
+        <option value="one_step">One-step (link now)</option></select></label>
+      <label>Variant<input name="variant" value="A" maxlength="4"></label>
+      <label class="full">WhatsApp prefill — keep it short
+        <input name="wa_prefill" value="Hi! Interested in {property} ({ref})"></label>
+      <div class="full"><button class="act primary" type="submit">Save campaign</button></div>
+    </form>
+    <div class="tw"><table>
+      <thead><tr><th>Reel</th><th>Keywords</th><th>Strategy</th><th>Variant</th>
+        <th>Leads</th></tr></thead>
+      <tbody id="campRows"></tbody>
+    </table></div>
+  </section>
+
+  <section class="view" id="v-clients">
+    <h2>Clients</h2>
+    <p class="hint">One row per influencer. Each gets their own login, knowledge
+      base, questions and Instagram account. Leave the WhatsApp fields empty to
+      use the shared platform number.</p>
+    <form class="grid" id="tenantForm">
+      <label>Business name<input name="name" required placeholder="Priya Fitness"></label>
+      <label>Domain lock<input name="domain_name" required
+             placeholder="gym, fitness training and memberships"></label>
+      <label>Vertical<select name="vertical" id="vertPick"><option value="">—</option></select></label>
+      <label>Portal username<input name="portal_user" placeholder="priya"></label>
+      <label>Portal password<input name="password" type="password"></label>
+      <label>Instagram user ID<input name="ig_user_id" placeholder="17841400000000000"></label>
+      <label>Instagram handle<input name="ig_username" placeholder="priya.fitness"></label>
+      <label>Instagram token<input name="ig_token" type="password"></label>
+      <label>Own WhatsApp number ID<input name="wa_phone_number_id" placeholder="optional"></label>
+      <label>Own WhatsApp number<input name="wa_business_number" placeholder="optional"></label>
+      <div class="full"><button class="act primary" type="submit">Add client</button></div>
+    </form>
+    <div class="tw"><table>
+      <thead><tr><th>Client</th><th>Vertical</th><th>Domain lock</th><th>Instagram</th>
+        <th>WhatsApp</th><th>Campaigns</th><th>Leads</th><th>Login</th></tr></thead>
+      <tbody id="tenantRows"></tbody>
+    </table></div>
+  </section>
+</main>
+
+<div id="detail"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const ROLE = document.body.dataset.role;
+const OWN_TENANT = document.body.dataset.tenant ? +document.body.dataset.tenant : null;
+let VIEW_TENANT = OWN_TENANT;          // which client we're looking at
+let QUESTIONS = [];
+
+const esc = s => (s ?? '').toString().replace(/[&<>"]/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hhmm = i => i ? new Date(i).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+const q = () => VIEW_TENANT ? ('?tenant=' + VIEW_TENANT) : '';
+const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('on');
+  setTimeout(()=>t.classList.remove('on'), 2200); };
+
+const CH = {COMMENTED:'ig',DM_SENT:'ig',DM_QUEUED:'ig',DM_REPLIED:'ig',LINK_SENT:'ig',
+  RECOVERY_SENT:'ig',CLICKED:'sys',CLICKED_AGAIN:'sys',DESKTOP_CLICK:'sys',
+  LINK_READY:'sys',CALLBACK_REQUESTED:'sys',WA_ENGAGED:'wa',QUALIFYING:'wa',
+  ANSWERED:'wa',QUALIFIED:'wa',SCORED:'sys',HANDED_OFF:'sys',BOT_RESUMED:'sys',
+  CRM_SYNCED:'crm'};
+const CHC = {ig:'d-instagram',wa:'d-whatsapp',crm:'d-crm',sys:'d-sys'};
+const HUE = {COMMENTED:'var(--ig)',DM_SENT:'var(--ig)',DM_REPLIED:'var(--ig)',
+  LINK_SENT:'var(--ig)',CLICKED:'var(--sys)',WA_ENGAGED:'var(--wa)',
+  QUALIFYING:'var(--wa)',QUALIFIED:'var(--wa)',HANDED_OFF:'var(--sys)',
+  CRM_SYNCED:'var(--crm)'};
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); $('#v-'+b.dataset.v).classList.add('on');
+  ({funnel:loadFunnel, leads:loadLeads, questions:loadQuestions,
+    knowledge:loadKb, campaigns:loadCampaigns, clients:loadTenants}[b.dataset.v])();
+});
+
+/* ---------------- funnel ---------------- */
+async function loadFunnel(){
+  const d = await (await fetch('/api/funnel'+q())).json();
+  const f = Object.fromEntries(d.funnel.map(r=>[r.stage,r.count]));
+  const qp = d.queue.instagram||{}, qw = d.queue.whatsapp||{};
+  $('#cards').innerHTML = [
+    ['Comments', f.COMMENTED||0, 'entered'],
+    ['In chat', f.WA_ENGAGED||0, 'reached WhatsApp'],
+    ['Qualified', f.QUALIFIED||0, 'answered all'],
+    ['Synced', f.CRM_SYNCED||0, 'in CRM'],
+  ].concat(ROLE==='admin' ? [['Queue',(qp.pending||0)+(qw.pending||0),'to send']] : [])
+   .map(([l,v,ft])=>`<div class="card"><div class="lbl">${l}</div>
+     <div class="val">${v}</div><div class="foot">${ft}</div></div>`).join('');
+
+  const top = Math.max(f.COMMENTED||0, f.DM_SENT||0, 1);
+  $('#bars').innerHTML = d.funnel.map(r=>`<div class="hop">
+    <span class="nm">${r.stage}</span>
+    <div class="bar"><div class="fill" style="width:${Math.max(r.count/top*100, r.count?1.5:0)}%;
+      background:${HUE[r.stage]||'var(--sys)'}"></div><span class="n">${r.count}</span></div>
+    <span class="pc">${r.pct_of_top}%</span></div>`).join('');
+
+  const L = d.leaks;
+  $('#leaks').innerHTML = `
+    <div class="leak"><h3>Leak 1 · DM → click</h3><div class="big">${L.leak1_dm_to_click.rate}%</div>
+      <div class="d">${L.leak1_dm_to_click.clicked} of ${L.leak1_dm_to_click.sent} ·
+      <b>${L.leak1_dm_to_click.lost} lost</b><br>Under 30% means it's landing in Message Requests.</div></div>
+    <div class="leak"><h3>Leak 2 · click → chat</h3><div class="big">${L.leak2_click_to_chat.rate}%</div>
+      <div class="d">${L.leak2_click_to_chat.engaged} of ${L.leak2_click_to_chat.clicked} ·
+      <b>${L.leak2_click_to_chat.lost} lost</b><br>These get one nudge 20 min after clicking.</div></div>`;
+
+  $('#variantBox').innerHTML = d.variants.length ? `<h2>DM copy variants</h2>
+    <p class="hint">Leak 1 is a copywriting problem. Only data solves it.</p>
+    <div class="tw"><table><thead><tr><th>Variant</th><th>Leads</th><th>Clicked</th>
+      <th>Click rate</th></tr></thead><tbody>${d.variants.map(v=>`<tr>
+      <td class="mono">${esc(v.variant)}</td><td class="mono">${v.leads}</td>
+      <td class="mono">${v.clicked}</td><td class="mono"><b>${v.click_rate}%</b></td>
+      </tr>`).join('')}</tbody></table></div>` : '';
+}
+
+/* ---------------- leads ---------------- */
+async function loadLeads(){
+  const p = new URLSearchParams();
+  if(VIEW_TENANT) p.set('tenant', VIEW_TENANT);
+  if($('#fBand').value) p.set('band', $('#fBand').value);
+  if($('#fStage').value) p.set('stage', $('#fStage').value);
+  const rows = await (await fetch('/api/leads?'+p)).json();
+  document.querySelectorAll('.tcol').forEach(e=>e.style.display = ROLE==='admin'?'':'none');
+  $('#leadRows').innerHTML = rows.length ? rows.map(l=>`
+    <tr class="click" onclick="openLead(${l.id})">
+      <td><span class="pill ${l.band||'COLD'}">${l.band||'—'} ${l.score}</span></td>
+      <td>${esc(l.name||l.ig_username||'Unknown')}</td>
+      <td class="mono">${l.wa_id?'+'+esc(l.wa_id):(l.ig_username?'@'+esc(l.ig_username):'—')}</td>
+      <td><span class="stage">${esc(l.stage)}</span></td>
+      <td>${esc(l.answers||'—')}</td>
+      <td>${esc(l.campaign_name||'—')}</td>
+      <td class="tcol" style="display:${ROLE==='admin'?'':'none'}">${esc(l.tenant_name||'—')}</td>
+      <td class="mono">${esc(l.ref_code||'—')}</td></tr>`).join('')
+    : '<tr><td colspan="8" class="empty">No leads yet.</td></tr>';
+}
+
+async function openLead(id){
+  const d = await (await fetch('/api/leads/'+id)).json();
+  if(d.error) return;
+  const l = d.lead;
+  const chips = d.answers.map(a=>`${a.key}: ${a.label||a.value}`)
+    .concat([d.campaign.name, l.assigned_agent && ('agent: '+l.assigned_agent),
+             'source: '+l.source]).filter(Boolean);
+  $('#sheet').innerHTML = `
+    <div class="sheet-top">
+      <div><div class="who">${esc(l.name||l.ig_username||'Unknown')}</div>
+        <div class="mono" style="color:var(--muted);font-size:11.5px">
+        ${l.wa_id?'+'+esc(l.wa_id):'no number'} · ref ${esc(l.ref_code||'—')} · #${l.id}</div></div>
+      <span style="margin-left:auto"></span>
+      <span class="pill ${l.band||'COLD'}">${l.band||'UNSCORED'} · ${l.score}</span>
+      <button class="act" onclick="takeover(${l.id},${l.bot_paused?0:1})">
+        ${l.bot_paused?'Return to bot':'Take over'}</button>
+      <button class="act" onclick="closeLead()">✕</button></div>
+    <div class="chips">${chips.map(c=>`<span class="chip">${esc(c)}</span>`).join('')
+      || '<span class="chip">not qualified yet</span>'}</div>
+    <div class="cols">
+      <div class="col"><h4>Journey</h4>${d.events.map(e=>`<div class="ev">
+        <span class="t">${hhmm(e.created_at)}</span>
+        <span class="mk"><i class="dot ${CHC[CH[e.type]||'sys']}"></i><span class="stem"></span></span>
+        <span class="tx"><b>${esc(e.type)}</b>${e.detail?' <em>'+esc(e.detail)+'</em>':''}</span>
+        </div>`).join('')||'<div class="empty">No events</div>'}</div>
+      <div class="col"><h4>Conversation</h4>
+        <div class="thread">${d.messages.map(m=>`<div class="bub ${m.role}">${esc(m.content)}
+          <div class="meta">${m.channel} · ${hhmm(m.created_at)}${m.role==='agent'?' · agent':''}</div>
+          </div>`).join('')||'<div class="empty">No messages</div>'}</div>
+        ${l.wa_id?`<div class="composer"><input type="text" id="reply" placeholder="Reply as a human…">
+          <button class="act primary" onclick="sendReply(${l.id})">Send</button></div>`:''}
+      </div></div>`;
+  $('#detail').classList.add('on');
+  const box = document.querySelector('.thread'); if(box) box.scrollTop = box.scrollHeight;
+}
+function closeLead(){ $('#detail').classList.remove('on'); }
+$('#detail').onclick = e => { if(e.target.id==='detail') closeLead(); };
+
+async function takeover(id, paused){
+  await fetch(`/api/leads/${id}/takeover`, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify({paused:!!paused})});
+  openLead(id); loadLeads();
+}
+async function sendReply(id){
+  const box = $('#reply'), text = box.value.trim(); if(!text) return;
+  const r = await (await fetch(`/api/leads/${id}/reply`, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify({text})})).json();
+  if(r.ok){ box.value=''; openLead(id); } else toast('Send failed: '+(r.error||''));
+}
+
+/* ---------------- question editor ---------------- */
+function qRow(qn, i){
+  const opts = (qn.options||[]).map(([id,label]) => `
+    <div class="opt">
+      <input class="oid" value="${esc(id)}" placeholder="id">
+      <input class="olabel" value="${esc(label)}" placeholder="What the customer sees">
+      <input class="opts-pts" type="number" min="0" max="100"
+             value="${(qn.score_map||{})[id] ?? 0}" title="points">
+      <button class="rm" onclick="this.closest('.opt').remove();recount()">×</button>
+    </div>`).join('');
+  return `<div class="qcard" data-i="${i}">
+    <div class="qhead">
+      <span class="num">${i+1}</span>
+      <input class="qtext" value="${esc(qn.question||'')}" placeholder="Question the bot asks">
+      <input class="qkey" value="${esc(qn.key||'')}" placeholder="field_name">
+      <button class="act danger" onclick="this.closest('.qcard').remove();renumber();recount()">Remove</button>
+    </div>
+    <div class="opts">${opts}</div>
+    <div class="qfoot">
+      <button class="act" onclick="addOpt(this)">+ Option</button>
+      <span class="tiny">${(qn.options||[]).length<=3
+        ? 'Buttons — max 3 options' : 'List — max 10 options'}</span>
+      <span class="warn" style="display:none">Over 10 options — WhatsApp will reject this.</span>
+    </div></div>`;
+}
+function addOpt(btn){
+  const box = btn.closest('.qcard').querySelector('.opts');
+  box.insertAdjacentHTML('beforeend', `<div class="opt">
+    <input class="oid" placeholder="id"><input class="olabel" placeholder="What the customer sees">
+    <input class="opts-pts" type="number" min="0" max="100" value="0">
+    <button class="rm" onclick="this.closest('.opt').remove();recount()">×</button></div>`);
+  recount();
+}
+function renumber(){ document.querySelectorAll('#qList .qcard .num')
+  .forEach((n,i)=>n.textContent = i+1); }
+function collectQuestions(){
+  return [...document.querySelectorAll('#qList .qcard')].map(card => {
+    const options = [], score_map = {};
+    card.querySelectorAll('.opt').forEach(o => {
+      const id = o.querySelector('.oid').value.trim();
+      if(!id) return;
+      options.push([id, o.querySelector('.olabel').value.trim() || id]);
+      score_map[id] = +o.querySelector('.opts-pts').value || 0;
+    });
+    return {key: card.querySelector('.qkey').value.trim(),
+            question: card.querySelector('.qtext').value.trim(),
+            qtype: options.length<=3 ? 'button' : 'list',
+            button_label:'Choose', options, score_map};
+  });
+}
+function recount(){
+  let total = 0;
+  collectQuestions().forEach(q => {
+    const v = Object.values(q.score_map); if(v.length) total += Math.max(...v);
+  });
+  $('#maxScore').textContent = `Max possible: ${total} pts → normalised to 100`;
+  document.querySelectorAll('#qList .qcard').forEach(c=>{
+    c.querySelector('.warn').style.display =
+      c.querySelectorAll('.opt').length > 10 ? '' : 'none';
+  });
+}
+async function loadQuestions(){
+  if(!VIEW_TENANT){ $('#qList').innerHTML =
+    '<div class="empty">Pick a client first.</div>'; $('#maxScore').textContent=''; return; }
+  QUESTIONS = await (await fetch(`/api/tenants/${VIEW_TENANT}/questions`)).json();
+  $('#qList').innerHTML = QUESTIONS.length ? QUESTIONS.map(qRow).join('')
+    : '<div class="empty">No questions yet — apply a template or add one.</div>';
+  recount();
+}
+$('#addQ').onclick = () => {
+  if(!VIEW_TENANT) return toast('Pick a client first');
+  const empty = $('#qList').querySelector('.empty'); if(empty) empty.remove();
+  $('#qList').insertAdjacentHTML('beforeend',
+    qRow({question:'',key:'',options:[['yes','Yes'],['no','No']],score_map:{yes:10,no:0}},
+         document.querySelectorAll('#qList .qcard').length));
+  recount();
+};
+$('#saveQ').onclick = async () => {
+  if(!VIEW_TENANT) return toast('Pick a client first');
+  const questions = collectQuestions().filter(q=>q.key && q.question && q.options.length);
+  if(!questions.length) return toast('Nothing to save');
+  const r = await (await fetch(`/api/tenants/${VIEW_TENANT}/questions`, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify({questions})})).json();
+  toast(r.ok ? `Saved ${r.count} questions` : (r.error||'Save failed'));
+  if(r.ok) loadQuestions();
+};
+$('#applyTpl').onclick = async () => {
+  if(!VIEW_TENANT) return toast('Pick a client first');
+  const vertical = $('#tplPick').value; if(!vertical) return;
+  if(!confirm('Replace all current questions with the '+vertical+' template?')) return;
+  const r = await (await fetch(`/api/tenants/${VIEW_TENANT}/questions/template`,
+    {method:'POST', headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({vertical})})).json();
+  toast(r.ok ? 'Template applied' : (r.error||'Failed'));
+  if(r.ok) loadQuestions();
+};
+
+/* ---------------- knowledge base ---------------- */
+async function loadKb(){
+  if(!VIEW_TENANT){ $('#kb').value=''; $('#domainName').value=''; return; }
+  const d = await (await fetch(`/api/tenants/${VIEW_TENANT}`)).json();
+  $('#kb').value = d.tenant.knowledge_base || '';
+  $('#domainName').value = d.tenant.domain_name || '';
+}
+$('#saveKb').onclick = async () => {
+  if(!VIEW_TENANT) return toast('Pick a client first');
+  const r = await (await fetch(`/api/tenants/${VIEW_TENANT}`, {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({knowledge_base:$('#kb').value,
+                         domain_name:$('#domainName').value})})).json();
+  toast(r.ok ? 'Saved' : (r.error||'Save failed'));
+};
+
+/* ---------------- campaigns ---------------- */
+async function loadCampaigns(){
+  const rows = await (await fetch('/api/campaigns'+q())).json();
+  $('#campRows').innerHTML = rows.length ? rows.map(c=>`<tr>
+    <td><b>${esc(c.name)}</b><br><span class="mono" style="color:var(--muted)">${esc(c.media_id)}</span></td>
+    <td class="mono">${esc(c.keywords)}</td><td><span class="stage">${esc(c.dm_strategy)}</span></td>
+    <td class="mono">${esc(c.variant)}</td><td class="mono">${c.lead_count}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="empty">No campaigns yet.</td></tr>';
+}
+$('#campForm').onsubmit = async e => {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target));
+  if(VIEW_TENANT) data.tenant_id = VIEW_TENANT;
+  const r = await (await fetch('/api/campaigns', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})).json();
+  if(r.ok){ e.target.reset(); e.target.variant.value='A';
+    e.target.wa_prefill.value='Hi! Interested in {property} ({ref})';
+    loadCampaigns(); toast('Campaign saved'); }
+  else toast(r.error||'Save failed');
+};
+
+/* ---------------- clients (admin only) ---------------- */
+async function loadTenants(){
+  if(ROLE!=='admin') return;
+  const rows = await (await fetch('/api/tenants')).json();
+  $('#tenantRows').innerHTML = rows.length ? rows.map(t=>`<tr>
+    <td><b>${esc(t.name)}</b><br><span class="mono" style="color:var(--muted)">${esc(t.slug)}</span></td>
+    <td class="mono">${esc(t.vertical||'—')}</td>
+    <td style="max-width:220px">${esc(t.domain_name)}</td>
+    <td class="mono">${t.ig_username?'@'+esc(t.ig_username):'—'}</td>
+    <td class="mono">${t.wa_phone_number_id?'own number':'shared'}</td>
+    <td class="mono">${t.campaign_count}</td><td class="mono">${t.lead_count}</td>
+    <td class="mono">${esc(t.portal_user||'—')}</td></tr>`).join('')
+    : '<tr><td colspan="8" class="empty">No clients yet. Add your first above.</td></tr>';
+}
+if(ROLE==='admin'){
+  $('#tenantForm').onsubmit = async e => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target));
+    const r = await (await fetch('/api/tenants', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})).json();
+    if(r.ok){ e.target.reset(); loadTenants(); refreshTenantPick();
+      toast('Client added'); } else toast(r.error||'Failed');
+  };
+  $('#tick').onclick = async () => {
+    const r = await (await fetch('/api/worker/tick', {method:'POST'})).json();
+    toast(`sent — ig ${r.instagram} · wa ${r.whatsapp} · crm ${r.crm}`); loadFunnel();
+  };
+}
+
+async function refreshTenantPick(){
+  const me = await (await fetch('/api/me')).json();
+  const tpl = $('#tplPick');
+  tpl.innerHTML = '<option value="">Start from a template…</option>' +
+    me.verticals.map(v=>`<option value="${v}">${v.replace('_',' ')}</option>`).join('');
+  const vp = $('#vertPick');
+  if(vp) vp.innerHTML = '<option value="">—</option>' +
+    me.verticals.map(v=>`<option value="${v}">${v.replace('_',' ')}</option>`).join('');
+  const pick = $('#tenantPick');
+  if(pick){
+    pick.innerHTML = '<option value="">All clients</option>' +
+      me.tenants.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+    pick.value = VIEW_TENANT || '';
+    pick.onchange = () => {
+      VIEW_TENANT = pick.value ? +pick.value : null;
+      $('#whoami').textContent = pick.value
+        ? pick.options[pick.selectedIndex].text : 'All clients';
+      document.querySelector('nav button.on').click();
+    };
+  }
+}
+
+['COMMENTED','DM_SENT','DM_REPLIED','LINK_SENT','CLICKED','WA_ENGAGED',
+ 'QUALIFYING','QUALIFIED','HANDED_OFF','CRM_SYNCED'].forEach(s=>{
+  const o=document.createElement('option'); o.textContent=s; $('#fStage').appendChild(o); });
+$('#refresh').onclick = loadLeads;
+$('#fBand').onchange = loadLeads;
+$('#fStage').onchange = loadLeads;
+
+refreshTenantPick();
+loadFunnel();
+setInterval(()=>{ if($('#v-funnel').classList.contains('on')) loadFunnel(); }, 15000);
+</script>
+</body>
+</html>

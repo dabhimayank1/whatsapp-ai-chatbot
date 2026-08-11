@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Continue on WhatsApp — {{ business }}</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--line:#e2e5ea;--ink:#16191d;--muted:#6b7280;--wa:#128c4a;}
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0f1114;--card:#181b1f;--line:#2a2e34;--ink:#e8eaed;--muted:#9aa0a6;--wa:#3ddc84;}
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;
+       background:var(--bg);color:var(--ink);
+       font:15px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+        padding:32px;max-width:420px;width:100%;text-align:center;}
+  h1{font-size:1.35rem;margin:0 0 6px;letter-spacing:-.02em;}
+  p{color:var(--muted);margin:0 0 22px;}
+  .qr{background:#fff;padding:14px;border-radius:12px;display:inline-block;
+      border:1px solid var(--line);}
+  .qr svg{display:block;width:190px;height:190px;}
+  .or{display:flex;align-items:center;gap:12px;color:var(--muted);
+      font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;margin:26px 0 18px;}
+  .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line);}
+  form{display:flex;gap:8px;}
+  input{flex:1;padding:11px 13px;border-radius:9px;border:1px solid var(--line);
+        background:var(--bg);color:var(--ink);font-size:15px;}
+  button{padding:11px 18px;border-radius:9px;border:none;background:var(--wa);
+         color:#03210f;font-weight:650;font-size:15px;cursor:pointer;}
+  button:hover{filter:brightness(1.06);}
+  .link{margin-top:20px;font-size:.8rem;word-break:break-all;}
+  .link a{color:var(--wa);}
+  .ref{margin-top:18px;font-family:ui-monospace,Consolas,monospace;
+       font-size:.72rem;color:var(--muted);letter-spacing:.06em;}
+  .msg{padding:13px;border-radius:10px;margin-bottom:18px;font-size:.9rem;}
+  .ok{background:rgba(18,140,74,.12);color:var(--wa);}
+  .err{background:rgba(200,60,50,.12);color:#c8483c;}
+</style>
+</head>
+<body>
+  <div class="card">
+    {% if done %}
+      <div class="msg ok">✅ Got it — we'll message you on WhatsApp shortly.</div>
+      <h1>Thanks!</h1>
+      <p>One of our consultants will be in touch within a few minutes.</p>
+    {% else %}
+      {% if error %}<div class="msg err">{{ error }}</div>{% endif %}
+      <h1>Scan to continue on WhatsApp</h1>
+      <p>
+        {% if property_ref %}Details for <strong>{{ property_ref }}</strong> are
+        waiting in the chat.{% else %}Your chat is ready.{% endif %}
+        Open the camera on your phone and scan.
+      </p>
+
+      {% if qr %}<div class="qr">{{ qr|safe }}</div>{% endif %}
+
+      <div class="or">or</div>
+      <form method="post" action="/r/{{ ref }}/callback">
+        <input type="tel" name="phone" placeholder="Your WhatsApp number" required
+               inputmode="numeric" autocomplete="tel">
+        <button type="submit">Message me</button>
+      </form>
+
+      {% if link %}
+        <p class="link">On your phone? <a href="{{ link }}">Tap here to open WhatsApp</a></p>
+      {% endif %}
+    {% endif %}
+    <div class="ref">REF {{ ref }}</div>
+  </div>
+</body>
+</html>
