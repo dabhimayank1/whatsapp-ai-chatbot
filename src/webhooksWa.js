@@ -7,6 +7,7 @@ import * as db from "./database.js";
 import * as flows from "./flows.js";
 import * as leads from "./leads.js";
 import * as tenants from "./tenants.js";
+import { process_ as processIg } from "./webhooksIg.js";
 
 export const router = express.Router();
 
@@ -33,6 +34,10 @@ router.post("/webhook", (req, res) => {
 
 export async function process_(payload) {
   try {
+    if (payload.object === "instagram" ||
+        (payload.entry && payload.entry[0]?.changes && payload.entry[0].changes[0]?.field === "comments")) {
+      return await processIg(payload);
+    }
     for (const entry of payload.entry || []) {
       for (const change of entry.changes || []) {
         const value = change.value || {};
