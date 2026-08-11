@@ -58,6 +58,15 @@ router.post("/ig-webhook", async (req, res) => {
 });
 
 export async function process_(payload) {
+  if (payload.sample) {
+    const s = payload.sample;
+    if (s.field === "comments") onComment(s.value || {}, "");
+    return;
+  }
+  if (payload.field === "comments" && payload.value) {
+    onComment(payload.value, "");
+    return;
+  }
   for (const entry of payload.entry || []) {
     // `entry.id` is the Instagram account the event belongs to — this is
     // how we know which influencer's reel was commented on.
