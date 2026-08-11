@@ -380,7 +380,8 @@ export function ensureDefaultTenants() {
     },
     {
       name: "Skyline Properties", vertical: "real_estate", portal_user: "skyline",
-      ig_username: "skyline.props",
+      ig_user_id: "17841448785224373",
+      ig_username: "jay_dwarkadhish__31",
       kb: "Skyline Properties, RERA registered. Skyline Satellite 3BHK ₹1.42 Cr, " +
           "4BHK ₹1.95 Cr, ready to move. Skyline Greens 2BHK ₹62 L, 3BHK ₹94 L, " +
           "possession Dec 2027. Booking ₹2 lakh. Free site visit pickup.",
@@ -400,6 +401,7 @@ export function ensureDefaultTenants() {
       vertical: c.vertical,
       portal_user: c.portal_user,
       password: "demo123",
+      ig_user_id: c.ig_user_id || null,
       ig_username: c.ig_username,
       knowledge_base: c.kb,
     });
