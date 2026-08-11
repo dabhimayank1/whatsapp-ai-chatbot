@@ -404,6 +404,31 @@ export function ensureDefaultTenants() {
       knowledge_base: c.kb,
     });
     applyTemplate(tid, c.vertical);
+
+    if (c.vertical === "real_estate") {
+      db.upsertCampaign({ media_id: "REEL_SK_1", tenant_id: tid, name: "Satellite 3BHK walkthrough", keywords: "price,info,details", property_ref: "3BHK Satellite", dm_strategy: "two_step", variant: "A", wa_prefill: "Hi! Interested in {property} ({ref})" });
+      const lid = db.createLead({ tenant_id: tid, media_id: "REEL_SK_1", name: "Arjun Pillai", wa_id: "919889263840", stage: "QUALIFIED", score: 85, band: "HOT", source: "instagram" });
+      db.saveAnswer(lid, "purpose", "buy", "Buy", 30);
+      db.saveAnswer(lid, "config", "3bhk", "3 BHK", 25);
+      db.saveAnswer(lid, "budget", "1-2Cr", "₹1-2 Cr", 30);
+      db.saveMessage(lid, "whatsapp", "user", "Hi! Interested in 3BHK Satellite");
+      db.saveMessage(lid, "whatsapp", "assistant", "We have 3BHK flats available in Skyline Satellite for ₹1.42 Cr. Would you like to book a site visit? 🏠");
+    } else if (c.vertical === "gym") {
+      db.upsertCampaign({ media_id: "REEL_PF_1", tenant_id: tid, name: "6-week transformation", keywords: "price,join,cost", property_ref: "6-week program", dm_strategy: "two_step", variant: "A", wa_prefill: "Hi! Interested in {property} ({ref})" });
+      const lid = db.createLead({ tenant_id: tid, media_id: "REEL_PF_1", name: "Vikram Shah", wa_id: "919843926694", stage: "QUALIFIED", score: 75, band: "HOT", source: "instagram" });
+      db.saveAnswer(lid, "goal", "general", "General fitness", 10);
+      db.saveAnswer(lid, "experience", "beginner", "Complete beginner", 15);
+      db.saveAnswer(lid, "plan", "trial", "Trial session", 10);
+      db.saveMessage(lid, "whatsapp", "user", "Hi! Interested in 6-week program");
+      db.saveMessage(lid, "whatsapp", "assistant", "Welcome to Priya Fitness! Monthly ₹2,000. Free trial session available. 🏋️");
+    } else if (c.vertical === "restaurant") {
+      db.upsertCampaign({ media_id: "REEL_TH_1", tenant_id: tid, name: "Butter chicken reel", keywords: "menu,price,book", property_ref: "dinner booking", dm_strategy: "two_step", variant: "A", wa_prefill: "Hi! Interested in {property} ({ref})" });
+      const lid = db.createLead({ tenant_id: tid, media_id: "REEL_TH_1", name: "Meera Nair", wa_id: "919854208435", stage: "QUALIFIED", score: 90, band: "HOT", source: "instagram" });
+      db.saveAnswer(lid, "party", "4", "4 people", 20);
+      db.saveAnswer(lid, "timing", "dinner", "Dinner", 20);
+      db.saveMessage(lid, "whatsapp", "user", "Hi! Interested in dinner booking");
+      db.saveMessage(lid, "whatsapp", "assistant", "Welcome to Tandoor House! Table booking confirmed. 🍽️");
+    }
   }
 }
 
