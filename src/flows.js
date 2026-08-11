@@ -108,6 +108,7 @@ export function handleInteractiveReply(lead, optionId, title) {
   const label = match ? match[1] : title;
   db.saveAnswer(leadId, step.key, optionId, label, points);
   db.addEvent(leadId, "ANSWERED", `${step.key} = ${optionId} (+${points})`);
+  leads.scoreLead(leadId);
 
   const nxt = index + 1;
   db.updateLead(leadId, { flow_step: nxt });
