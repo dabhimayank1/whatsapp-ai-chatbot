@@ -43,11 +43,15 @@ async function post(url, payload, token = "") {
   }
 }
 
-/** (account id, token) for a tenant, falling back to the global config. */
 function creds(tenantId) {
   if (tenantId) {
     const t = tenants.get(tenantId);
-    if (t && t.ig_token) return [t.ig_user_id || config.IG_USER_ID, t.ig_token];
+    if (t && t.ig_token && !t.ig_token.startsWith("TOK_")) {
+      return [t.ig_user_id || config.IG_USER_ID, t.ig_token];
+    }
+    if (t && t.ig_user_id) {
+      return [t.ig_user_id, config.IG_TOKEN];
+    }
   }
   return [config.IG_USER_ID, config.IG_TOKEN];
 }
