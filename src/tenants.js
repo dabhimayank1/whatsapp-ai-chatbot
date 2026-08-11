@@ -143,11 +143,15 @@ export function resolveForWhatsapp(refCode = "", waId = "", phoneNumberId = "", 
   if (t) return t;
 
   const lowered = String(text || "").toLowerCase();
-  for (const tenant of allTenants(true)) {
-    const firstName = tenant.name ? tenant.name.toLowerCase().split(" ")[0] : "";
-    if (tenant.name && lowered.includes(tenant.name.toLowerCase())) return tenant;
-    if (tenant.slug && lowered.includes(tenant.slug.toLowerCase())) return tenant;
-    if (firstName && firstName.length >= 3 && lowered.includes(firstName)) return tenant;
+  if (lowered) {
+    for (const tenant of allTenants(true)) {
+      const name = (tenant.name || "").toLowerCase();
+      const firstName = name.split(" ")[0];
+
+      if (name && lowered.includes(name)) return tenant;
+      if (tenant.slug && lowered.includes(tenant.slug.toLowerCase())) return tenant;
+      if (firstName && firstName.length >= 3 && lowered.includes(firstName)) return tenant;
+    }
   }
 
   if (waId) {
