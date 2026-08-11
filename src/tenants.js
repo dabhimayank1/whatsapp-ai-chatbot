@@ -355,3 +355,49 @@ export function applyTemplate(tenantId, vertical) {
   update(tenantId, { vertical });
   return true;
 }
+
+export function ensureDefaultTenants() {
+  if (allTenants().length > 0) return;
+  const CLIENTS = [
+    {
+      name: "Priya Fitness", vertical: "gym", portal_user: "priya",
+      ig_username: "priya.fitness",
+      kb: "Priya Fitness, Bodakdev Ahmedabad. Monthly ₹2,000 · Quarterly ₹5,400 · " +
+          "Annual ₹18,000. Personal training ₹8,000/month. Open 5 AM – 10 PM. " +
+          "Free trial session available. Steam, cardio, free weights, CrossFit zone.",
+    },
+    {
+      name: "Skyline Properties", vertical: "real_estate", portal_user: "skyline",
+      ig_username: "skyline.props",
+      kb: "Skyline Properties, RERA registered. Skyline Satellite 3BHK ₹1.42 Cr, " +
+          "4BHK ₹1.95 Cr, ready to move. Skyline Greens 2BHK ₹62 L, 3BHK ₹94 L, " +
+          "possession Dec 2027. Booking ₹2 lakh. Free site visit pickup.",
+    },
+    {
+      name: "Tandoor House", vertical: "restaurant", portal_user: "tandoor",
+      ig_username: "tandoor.house",
+      kb: "Tandoor House, CG Road Ahmedabad. North Indian and Mughlai. " +
+          "Lunch 12–3:30, dinner 7–11:30. Party hall seats 60. Catering from " +
+          "₹450/plate. Pure veg and Jain options. Table booking recommended.",
+    },
+  ];
+  for (const c of CLIENTS) {
+    const tid = create({
+      name: c.name,
+      domain_name: TEMPLATES[c.vertical].domain_name,
+      vertical: c.vertical,
+      portal_user: c.portal_user,
+      password: "demo123",
+      ig_username: c.ig_username,
+      knowledge_base: c.kb,
+    });
+    applyTemplate(tid, c.vertical);
+  }
+}
+
+export default {
+  slugify, create, update, get, bySlug, byPortalUser, allTenants, checkLogin,
+  byInstagram, byPhoneNumberId, resolveForWhatsapp, whatsappNumber, phoneNumberId,
+  outOfScopeMessage, text, questions, applyTemplate, TEMPLATES, ensureDefaultTenants,
+};
+

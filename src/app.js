@@ -19,6 +19,7 @@ import nunjucks from "nunjucks";
 import { router as adminRouter } from "./admin.js";
 import config from "./config.js";
 import * as db from "./database.js";
+import * as tenants from "./tenants.js";
 import { router as trackerRouter } from "./tracker.js";
 import { router as igRouter } from "./webhooksIg.js";
 import { router as waRouter } from "./webhooksWa.js";
@@ -45,6 +46,7 @@ export function createApp({ startWorker = true } = {}) {
   }));
 
   db.initDb();
+  tenants.ensureDefaultTenants();
 
   app.use(waRouter);
   app.use(igRouter);
