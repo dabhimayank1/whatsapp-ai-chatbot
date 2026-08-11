@@ -114,11 +114,14 @@ export function checkLogin(username, password) {
 
 // --------------------------------------------------------------- resolution
 export function byInstagram(igUserId) {
-  if (!igUserId) return null;
-  const match = db.row("SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [igUserId]);
-  if (match) return match;
+  if (igUserId) {
+    const match = db.row("SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [igUserId]);
+    if (match) return match;
+  }
   const activeWithIg = allTenants(true).filter((t) => t.ig_user_id);
-  if (activeWithIg.length === 1) return activeWithIg[0];
+  if (activeWithIg.length >= 1) return activeWithIg[0];
+  const allActive = allTenants(true);
+  if (allActive.length >= 1) return allActive[0];
   return null;
 }
 
