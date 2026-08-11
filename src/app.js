@@ -48,13 +48,6 @@ export function createApp({ startWorker = true } = {}) {
   db.initDb();
   tenants.ensureDefaultTenants();
 
-  app.use(waRouter);
-  app.use(igRouter);
-  app.use(trackerRouter);
-  app.use(adminRouter);
-
-  app.get("/", (req, res) => res.redirect(302, "/admin"));
-
   app.get("/privacy", (req, res) => {
     res.status(200).send(`
       <!DOCTYPE html>
@@ -69,6 +62,13 @@ export function createApp({ startWorker = true } = {}) {
       </html>
     `);
   });
+
+  app.use(waRouter);
+  app.use(igRouter);
+  app.use(trackerRouter);
+  app.use(adminRouter);
+
+  app.get("/", (req, res) => res.redirect(302, "/admin"));
 
   app.get("/health", (req, res) =>
     res.json({
