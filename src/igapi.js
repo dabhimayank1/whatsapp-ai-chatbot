@@ -52,12 +52,18 @@ function creds(tenantId) {
   return [config.IG_USER_ID, config.IG_TOKEN];
 }
 
-/** DM the author of a comment. One shot — the caller must deduplicate. */
 async function privateReply(commentId, text, tenantId = null) {
   const [igId, token] = creds(tenantId);
-  return post(
-    `${config.IG_GRAPH}/${igId}/messages`,
+  const [ok, err] = await post(
+    `${config.GRAPH}/${igId}/messages`,
     { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
+    token,
+  );
+  if (ok) return [true, ""];
+  console.log(`Private reply endpoint 1 failed (${err}); trying /{commentId}/private_replies...`);
+  return post(
+    `${config.GRAPH}/${commentId}/private_replies`,
+    { message: text.slice(0, 1000) },
     token,
   );
 }
