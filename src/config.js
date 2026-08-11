@@ -60,7 +60,7 @@ const config = {
   WA_VERIFY_TOKEN: env("WA_VERIFY_TOKEN", env("VERIFY_TOKEN", "changeme")),
   WA_BUSINESS_NUMBER: env("WA_BUSINESS_NUMBER", "919876543210"), // for wa.me links
 
-  IG_TOKEN: env("IG_TOKEN"),
+  IG_TOKEN: env("IG_TOKEN", env("WHATSAPP_TOKEN")),
   IG_USER_ID: env("IG_USER_ID"),
   IG_VERIFY_TOKEN: env("IG_VERIFY_TOKEN", env("WA_VERIFY_TOKEN", "my-secret-verify-token-123")),
 
