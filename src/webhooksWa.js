@@ -67,7 +67,7 @@ async function onMessage(msg, contacts, phoneNumberId = "") {
   // phone_number_id is enough; a returning customer resolves from their
   // existing lead.
   const ref = leads.extractRef(text);
-  const tenant = tenants.resolveForWhatsapp(ref || "", waId, phoneNumberId);
+  const tenant = tenants.resolveForWhatsapp(ref || "", waId, phoneNumberId, text);
   const tenantId = tenant ? tenant.id : null;
   if (tenant === null) {
     console.warn(

@@ -133,7 +133,7 @@ export function byPhoneNumberId(phoneNumberId) {
  * conversation is the fallback for someone returning days later without a
  * ref code.
  */
-export function resolveForWhatsapp(refCode = "", waId = "", phoneNumberId = "") {
+export function resolveForWhatsapp(refCode = "", waId = "", phoneNumberId = "", text = "") {
   if (refCode) {
     const lead = db.leadByRef(refCode);
     if (lead && lead.tenant_id) return get(lead.tenant_id);
@@ -141,6 +141,14 @@ export function resolveForWhatsapp(refCode = "", waId = "", phoneNumberId = "") 
 
   const t = byPhoneNumberId(phoneNumberId);
   if (t) return t;
+
+  const lowered = String(text || "").toLowerCase();
+  for (const tenant of allTenants(true)) {
+    const firstName = tenant.name ? tenant.name.toLowerCase().split(" ")[0] : "";
+    if (tenant.name && lowered.includes(tenant.name.toLowerCase())) return tenant;
+    if (tenant.slug && lowered.includes(tenant.slug.toLowerCase())) return tenant;
+    if (firstName && firstName.length >= 3 && lowered.includes(firstName)) return tenant;
+  }
 
   if (waId) {
     const lead = db.leadByWa(waId);
