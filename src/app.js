@@ -55,6 +55,21 @@ export function createApp({ startWorker = true } = {}) {
 
   app.get("/", (req, res) => res.redirect(302, "/admin"));
 
+  app.get("/privacy", (req, res) => {
+    res.status(200).send(`
+      <!DOCTYPE html>
+      <html>
+        <head><title>Privacy Policy & Data Deletion</title></head>
+        <body style="font-family:sans-serif; padding:40px; line-height:1.6;">
+          <h1>Privacy Policy & User Data Deletion</h1>
+          <p>We respect your privacy. All user interaction data collected via WhatsApp and Instagram is strictly used to provide automated customer support and qualification services.</p>
+          <h2>Data Deletion Instructions</h2>
+          <p>If you wish to delete your data from our system, please send an email to <strong>dabhimayank086@gmail.com</strong> with your Instagram username or phone number. We will process your deletion request within 24 hours.</p>
+        </body>
+      </html>
+    `);
+  });
+
   app.get("/health", (req, res) =>
     res.json({
       status: "ok",
