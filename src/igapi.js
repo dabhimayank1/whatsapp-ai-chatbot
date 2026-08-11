@@ -58,16 +58,28 @@ function creds(tenantId) {
 
 async function privateReply(commentId, text, tenantId = null) {
   const [igId, token] = creds(tenantId);
-  const [ok, err] = await post(
-    `${config.GRAPH}/${igId}/messages`,
+  // Try 1: Instagram Graph API /{igId}/messages
+  let [ok, err] = await post(
+    `${config.IG_GRAPH}/${igId}/messages`,
     { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
     token,
   );
   if (ok) return [true, ""];
+
+  // Try 2: Facebook Graph API /{commentId}/private_replies
   console.log(`Private reply endpoint 1 failed (${err}); trying /{commentId}/private_replies...`);
-  return post(
+  [ok, err] = await post(
     `${config.GRAPH}/${commentId}/private_replies`,
     { message: text.slice(0, 1000) },
+    token,
+  );
+  if (ok) return [true, ""];
+
+  // Try 3: Facebook Graph API /{igId}/messages
+  console.log(`Private reply endpoint 2 failed (${err}); trying Facebook /{igId}/messages...`);
+  return post(
+    `${config.GRAPH}/${igId}/messages`,
+    { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
     token,
   );
 }
