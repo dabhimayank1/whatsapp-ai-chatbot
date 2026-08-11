@@ -330,13 +330,23 @@ export function allCampaigns(tenantId = null) {
   );
 }
 
-/** Return the campaign if the comment contains one of its keywords. */
-export function matchCampaign(mediaId, commentText) {
-  const camp = getCampaign(mediaId);
-  if (!camp || !camp.active) return null;
+export function matchCampaign(mediaId, commentText, tenantId = null) {
+  let camp = getCampaign(mediaId);
   const text = String(commentText || "").toLowerCase();
-  for (const kw of String(camp.keywords || "").split(",")) {
-    if (kw && text.includes(kw)) return camp;
+  if (camp && camp.active) {
+    for (const kw of String(camp.keywords || "").split(",")) {
+      const trimmed = kw.trim().toLowerCase();
+      if (trimmed && text.includes(trimmed)) return camp;
+    }
+  }
+  if (tenantId) {
+    const tenantCamps = rows("SELECT * FROM campaigns WHERE tenant_id = ? AND active = 1 ORDER BY created_at DESC", [tenantId]);
+    for (const c of tenantCamps) {
+      for (const kw of String(c.keywords || "").split(",")) {
+        const trimmed = kw.trim().toLowerCase();
+        if (trimmed && text.includes(trimmed)) return c;
+      }
+    }
   }
   return null;
 }

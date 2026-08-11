@@ -89,7 +89,7 @@ function onComment(value, recipientIgId = "") {
   }
   if (igUserId && igUserId === tenant.ig_user_id) return; // the influencer's own reply
 
-  const campaign = db.matchCampaign(mediaId, text);
+  const campaign = db.matchCampaign(mediaId, text, tenant.id);
   if (!campaign) {
     console.log(`comment ${commentId} did not match a campaign keyword`);
     return;
