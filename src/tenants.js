@@ -113,10 +113,13 @@ export function checkLogin(username, password) {
 }
 
 // --------------------------------------------------------------- resolution
-/** Which tenant owns the Instagram account that received this comment. */
 export function byInstagram(igUserId) {
   if (!igUserId) return null;
-  return db.row("SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [igUserId]);
+  const match = db.row("SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [igUserId]);
+  if (match) return match;
+  const activeWithIg = allTenants(true).filter((t) => t.ig_user_id);
+  if (activeWithIg.length === 1) return activeWithIg[0];
+  return null;
 }
 
 /** Only matches tenants on a dedicated WhatsApp number. */
