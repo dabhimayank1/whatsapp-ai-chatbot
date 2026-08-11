@@ -65,14 +65,8 @@ export function leadFromWhatsapp(waId, text, profileName = "", tenantId = null) 
     if (lead) return lead;
   }
 
-  const existing = db.leadByWa(waId);
-  if (existing) {
-    if (tenantId && existing.tenant_id !== tenantId) {
-      db.updateLead(existing.id, { tenant_id: tenantId, flow_step: 0, flow_active: 0, out_of_scope_streak: 0, bot_paused: 0 });
-      return db.getLead(existing.id);
-    }
-    return existing;
-  }
+  const existing = db.leadByWa(waId, tenantId);
+  if (existing) return existing;
 
   const leadId = db.createLead({
     tenant_id: tenantId,

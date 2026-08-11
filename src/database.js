@@ -372,7 +372,11 @@ export function leadByRef(refCode) {
   return row("SELECT * FROM leads WHERE ref_code = ?", [String(refCode).toUpperCase()]);
 }
 
-export function leadByWa(waId) {
+export function leadByWa(waId, tenantId = null) {
+  if (tenantId !== null && tenantId !== undefined) {
+    return row("SELECT * FROM leads WHERE wa_id = ? AND tenant_id = ? ORDER BY id DESC LIMIT 1",
+               [waId, tenantId]);
+  }
   return row("SELECT * FROM leads WHERE wa_id = ? ORDER BY id DESC LIMIT 1", [waId]);
 }
 
