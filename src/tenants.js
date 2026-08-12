@@ -118,8 +118,10 @@ export function byInstagram(igUserId) {
     const match = db.row("SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [igUserId]);
     if (match) return match;
   }
-  const activeWithIg = allTenants(true).filter((t) => t.ig_user_id);
-  if (activeWithIg.length >= 1) return activeWithIg[0];
+  if (config.IG_USER_ID) {
+    const matchEnv = db.row("SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [config.IG_USER_ID]);
+    if (matchEnv) return matchEnv;
+  }
   const allActive = allTenants(true);
   if (allActive.length >= 1) return allActive[0];
   return null;
