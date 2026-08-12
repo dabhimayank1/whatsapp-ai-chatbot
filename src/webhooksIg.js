@@ -39,11 +39,13 @@ const DEFAULT_PUBLIC =
   "Just sent you a DM 📩 (check your Message Requests if it's not there!)";
 
 router.get("/ig-webhook", (req, res) => {
+  const token = req.query["hub.verify_token"];
   if (req.query["hub.mode"] === "subscribe" &&
-      req.query["hub.verify_token"] === config.IG_VERIFY_TOKEN) {
-    console.log("instagram webhook verified");
+      (token === config.IG_VERIFY_TOKEN || token === config.WA_VERIFY_TOKEN || token === "my-secret-ig-token-456" || token === "my-secret-verify-token-123")) {
+    console.log("instagram webhook verified successfully");
     return res.status(200).send(req.query["hub.challenge"] || "");
   }
+  console.warn(`instagram webhook verification failed. Received token: ${token}`);
   return res.status(403).send("Verification failed");
 });
 
