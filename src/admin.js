@@ -241,7 +241,11 @@ router.post("/api/campaigns", auth.requireLogin, (req, res) => {
     return res.status(400).json({ ok: false, error: "media_id and name required" });
   }
 
-  const tid = auth.scopeTenantId(req);
+  let tid = auth.scopeTenantId(req);
+  if (tid === null) {
+    const all = tenants.allTenants(true);
+    if (all.length > 0) tid = all[0].id;
+  }
   if (tid === null) {
     return res.status(400).json({ ok: false,
                                   error: "pick a client before adding a campaign" });
