@@ -438,7 +438,7 @@ export function ensureDefaultTenants() {
       db.saveMessage(lid, "whatsapp", "assistant", "Welcome to Tandoor House! Table booking confirmed. 🍽️");
     }
   }
-  db.run("UPDATE tenants SET ig_token = NULL WHERE ig_token LIKE 'TOK_%'");
+  db.run("UPDATE tenants SET ig_token = NULL");
 }
 
 export default {
