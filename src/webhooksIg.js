@@ -51,6 +51,22 @@ router.get("/ig-webhook", (req, res) => {
 
 router.post("/ig-webhook", async (req, res) => {
   const payload = req.body || {};
+  console.log("=== INSTAGRAM WEBHOOK RECEIVED ===");
+  console.log(JSON.stringify(payload, null, 2));
+
+  try {
+    const entryIds = (payload.entry || []).map((e) => e.id).filter(Boolean);
+    console.log("Instagram webhook entry IDs:", entryIds);
+
+    const fields = (payload.entry || [])
+      .flatMap((e) => e.changes || [])
+      .map((c) => c.field)
+      .filter(Boolean);
+    console.log("Instagram webhook fields:", fields);
+  } catch (logErr) {
+    console.error("Diagnostic logging error:", logErr?.message || logErr);
+  }
+
   try {
     await process_(payload);
   } catch (err) {
