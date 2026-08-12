@@ -80,8 +80,16 @@ export async function drainChannel(channel, batch = 10) {
       }
     } else {
       const attempts = item.attempts + 1;
-      db.retryQueue(item.id, err, BACKOFF_MINUTES[attempts] ?? 60);
-      console.warn(`send failed (attempt ${attempts}) ${item.kind}: ${err}`);
+      const isPermanentErr = String(err).includes("401") || String(err).includes("403");
+      const isOneShot = item.kind === "ig_private_reply";
+
+      if (isOneShot || isPermanentErr) {
+        db.markQueue(item.id, "failed", err);
+        console.warn(`send failed (permanent/one-shot failure) ${item.kind}: ${err}`);
+      } else {
+        db.retryQueue(item.id, err, BACKOFF_MINUTES[attempts] ?? 60);
+        console.warn(`send failed (attempt ${attempts}) ${item.kind}: ${err}`);
+      }
     }
   }
   return sent;

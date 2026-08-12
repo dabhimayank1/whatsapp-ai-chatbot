@@ -17,10 +17,18 @@ import * as tenants from "./tenants.js";
 
 async function post(url, payload, token = "") {
   const bearer = token || config.IG_TOKEN;
-  if (!bearer) {
-    console.warn("IG token missing — dry run:", url, JSON.stringify(payload));
-    return [true, "dry run"];
+
+  // Never use WhatsApp token as Instagram token
+  if (bearer && bearer === config.WHATSAPP_TOKEN) {
+    console.error("Instagram API error: IG_TOKEN matches WHATSAPP_TOKEN — refusing to call Meta with invalid credentials.");
+    return [false, "401 OAuthException code 190 (IG_TOKEN matches WHATSAPP_TOKEN)"];
   }
+
+  if (!bearer || bearer.startsWith("TOK_")) {
+    console.warn("Instagram API error: IG_TOKEN missing or invalid placeholder.");
+    return [false, "Instagram token missing (IG_TOKEN not configured)"];
+  }
+
   try {
     const r = await fetch(url, {
       method: "POST",
@@ -31,22 +39,40 @@ async function post(url, payload, token = "") {
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15_000),
     });
+
     if (r.status >= 400) {
-      const body = await r.text();
-      console.error(`Instagram call failed ${r.status}: ${body}`);
-      return [false, `${r.status} ${body.slice(0, 200)}`];
+      const text = await r.text();
+      let errDetail = `${r.status} ${text.slice(0, 200)}`;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed.error) {
+          const e = parsed.error;
+          errDetail = `${r.status} [${e.type || "OAuthException"}:${e.code || r.status}] ${e.message || text}`;
+          console.error("Instagram API call failed:");
+          console.error(`  status: ${r.status}`);
+          console.error(`  code: ${e.code || "unknown"}`);
+          console.error(`  type: ${e.type || "unknown"}`);
+          console.error(`  message: ${e.message || "none"}`);
+          if (e.fbtrace_id) console.error(`  fbtrace_id: ${e.fbtrace_id}`);
+        } else {
+          console.error(`Instagram API call failed ${r.status}: ${text.slice(0, 200)}`);
+        }
+      } catch {
+        console.error(`Instagram API call failed ${r.status}: ${text.slice(0, 200)}`);
+      }
+      return [false, errDetail];
     }
     return [true, ""];
   } catch (err) {
-    console.error("Instagram request failed:", err?.message || err);
+    console.error("Instagram request network error:", err?.message || err);
     return [false, String(err?.message || err)];
   }
 }
 
-function creds(tenantId) {
+export function creds(tenantId) {
   if (tenantId) {
     const t = tenants.get(tenantId);
-    if (t && t.ig_token && !t.ig_token.startsWith("TOK_")) {
+    if (t && t.ig_token && !t.ig_token.startsWith("TOK_") && t.ig_token !== config.WHATSAPP_TOKEN) {
       return [t.ig_user_id || config.IG_USER_ID, t.ig_token];
     }
     if (t && t.ig_user_id) {
@@ -58,7 +84,11 @@ function creds(tenantId) {
 
 async function privateReply(commentId, text, tenantId = null) {
   const [igId, token] = creds(tenantId);
-  // Try 1: Instagram Graph API /{igId}/messages
+  if (!token) {
+    return [false, "Instagram token missing (IG_TOKEN not configured)"];
+  }
+
+  // Try 1: Instagram Graph API /{igId}/messages with recipient.comment_id
   let [ok, err] = await post(
     `${config.IG_GRAPH}/${igId}/messages`,
     { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
@@ -87,13 +117,35 @@ async function privateReply(commentId, text, tenantId = null) {
 /** Reply under the comment. Also nudges the reel's engagement. */
 async function publicReply(commentId, text, tenantId = null) {
   const [, token] = creds(tenantId);
-  return post(`${config.IG_GRAPH}/${commentId}/replies`,
-              { message: text.slice(0, 300) }, token);
+  if (!token) {
+    return [false, "Instagram token missing (IG_TOKEN not configured)"];
+  }
+
+  let [ok, err] = await post(
+    `${config.IG_GRAPH}/${commentId}/replies`,
+    { message: text.slice(0, 300) },
+    token,
+  );
+  if (ok) return [true, ""];
+
+  // Fallback to Facebook Graph API if IG_GRAPH host fails
+  if (config.IG_GRAPH_HOST !== "graph.facebook.com") {
+    console.log(`Public reply IG_GRAPH failed (${err}); trying Facebook Graph API...`);
+    return post(
+      `${config.GRAPH}/${commentId}/replies`,
+      { message: text.slice(0, 300) },
+      token,
+    );
+  }
+  return [ok, err];
 }
 
 /** Standard DM. Only valid inside the 24-hour window. */
 async function sendDm(igUserId, text, tenantId = null) {
   const [igId, token] = creds(tenantId);
+  if (!token) {
+    return [false, "Instagram token missing (IG_TOKEN not configured)"];
+  }
   return post(
     `${config.IG_GRAPH}/${igId}/messages`,
     { recipient: { id: igUserId }, message: { text: text.slice(0, 1000) } },
@@ -101,4 +153,4 @@ async function sendDm(igUserId, text, tenantId = null) {
   );
 }
 
-export default { privateReply, publicReply, sendDm };
+export default { creds, privateReply, publicReply, sendDm };

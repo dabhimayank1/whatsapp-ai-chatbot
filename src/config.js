@@ -60,7 +60,7 @@ const config = {
   WA_VERIFY_TOKEN: env("WA_VERIFY_TOKEN", env("VERIFY_TOKEN", "changeme")),
   WA_BUSINESS_NUMBER: env("WA_BUSINESS_NUMBER", "919876543210"), // for wa.me links
 
-  IG_TOKEN: "EAAWV2ST7dpoBSHlAX79ChWotsPuqCPrrZB7GaMaZAZA4ks14fvcSK9rc3ycMWikgi3eaRjiLtTS4nJOUDTnsMK2S12u5WV8yemZBj1jQRhL4LHllZCjcqZBPZAWQLYxGRXEKiZBEk4dAwfwX2x6MklKBZCFOiqFqpsZCdxBZADgMvAAMUHpNmcRUCOqxjnGxMBzLehR8wZDZD",
+  IG_TOKEN: env("IG_TOKEN"),
   IG_USER_ID: env("IG_USER_ID"),
   IG_VERIFY_TOKEN: env("IG_VERIFY_TOKEN", env("WA_VERIFY_TOKEN", "my-secret-verify-token-123")),
 
@@ -145,5 +145,34 @@ const config = {
 };
 
 config.KNOWLEDGE_BASE = loadKnowledgeBase();
+
+export function validateIgConfig() {
+  const isConfigured = Boolean(config.IG_TOKEN);
+  const isSameAsWa = isConfigured && config.IG_TOKEN === config.WHATSAPP_TOKEN;
+  const isPlaceholder = isConfigured && config.IG_TOKEN.startsWith("TOK_");
+  const isUserIdSet = Boolean(config.IG_USER_ID);
+
+  console.log("Instagram configuration:");
+  console.log(`  IG_TOKEN configured: ${isConfigured}`);
+  if (isConfigured) {
+    console.log(`  IG_TOKEN length: ${config.IG_TOKEN.length}`);
+  }
+  console.log(`  IG_USER_ID configured: ${isUserIdSet}`);
+  console.log(`  IG_GRAPH: ${config.IG_GRAPH}`);
+
+  if (!isConfigured) {
+    console.warn("  Instagram token status: IG_TOKEN environment variable is not set.");
+    return false;
+  }
+  if (isSameAsWa) {
+    console.error("  Instagram token ERROR: IG_TOKEN matches WHATSAPP_TOKEN! Instagram requires its own token.");
+    return false;
+  }
+  if (isPlaceholder) {
+    console.warn("  Instagram token status: IG_TOKEN is a placeholder token.");
+    return false;
+  }
+  return true;
+}
 
 export default config;
