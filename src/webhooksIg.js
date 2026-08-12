@@ -63,6 +63,7 @@ export async function process_(payload) {
   if (payload.sample) {
     const s = payload.sample;
     if (s.field === "comments") onComment(s.value || {}, "");
+    if (s.field === "messages") onDm(s.value || {}, "");
     return;
   }
   if (payload.field === "comments" && payload.value) {
