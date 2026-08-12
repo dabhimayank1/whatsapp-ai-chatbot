@@ -75,9 +75,6 @@ export function creds(tenantId) {
     if (t && t.ig_token && !t.ig_token.startsWith("TOK_") && (t.ig_token !== config.WHATSAPP_TOKEN || !config.WHATSAPP_TOKEN)) {
       return [t.ig_user_id || config.IG_USER_ID, t.ig_token];
     }
-    if (t && t.ig_user_id) {
-      return [t.ig_user_id, config.IG_TOKEN];
-    }
   }
   return [config.IG_USER_ID, config.IG_TOKEN];
 }
