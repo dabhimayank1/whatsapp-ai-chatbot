@@ -55,7 +55,7 @@ const config = {
   // ------------------------------------------------------------- credentials
   GROQ_API_KEY: env("GROQ_API_KEY"),
 
-  WHATSAPP_TOKEN: env("WHATSAPP_TOKEN", "EAAWV2ST7dpoBSHlAX79ChWotsPuqCPrrZB7GaMaZAZA4ks14fvcSK9rc3ycMWikgi3eaRjiLtTS4nJOUDTnsMK2S12u5WV8yemZBj1jQRhL4LHllZCjcqZBPZAWQLYxGRXEKiZBEk4dAwfwX2x6MklKBZCFOiqFqpsZCdxBZADgMvAAMUHpNmcRUCOqxjnGxMBzLehR8wZDZD"),
+  WHATSAPP_TOKEN: env("WHATSAPP_TOKEN"),
   PHONE_NUMBER_ID,
   WA_VERIFY_TOKEN: env("WA_VERIFY_TOKEN", env("VERIFY_TOKEN", "changeme")),
   WA_BUSINESS_NUMBER: env("WA_BUSINESS_NUMBER", "919876543210"), // for wa.me links

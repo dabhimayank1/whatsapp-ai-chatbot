@@ -19,7 +19,7 @@ async function post(url, payload, token = "") {
   const bearer = token || config.IG_TOKEN;
 
   // Never use WhatsApp token as Instagram token
-  if (bearer && bearer === config.WHATSAPP_TOKEN) {
+  if (bearer && config.WHATSAPP_TOKEN && bearer === config.WHATSAPP_TOKEN) {
     console.error("Instagram API error: IG_TOKEN matches WHATSAPP_TOKEN — refusing to call Meta with invalid credentials.");
     return [false, "401 OAuthException code 190 (IG_TOKEN matches WHATSAPP_TOKEN)"];
   }
@@ -72,7 +72,7 @@ async function post(url, payload, token = "") {
 export function creds(tenantId) {
   if (tenantId) {
     const t = tenants.get(tenantId);
-    if (t && t.ig_token && !t.ig_token.startsWith("TOK_") && t.ig_token !== config.WHATSAPP_TOKEN) {
+    if (t && t.ig_token && !t.ig_token.startsWith("TOK_") && (t.ig_token !== config.WHATSAPP_TOKEN || !config.WHATSAPP_TOKEN)) {
       return [t.ig_user_id || config.IG_USER_ID, t.ig_token];
     }
     if (t && t.ig_user_id) {
@@ -88,27 +88,8 @@ async function privateReply(commentId, text, tenantId = null) {
     return [false, "Instagram token missing (IG_TOKEN not configured)"];
   }
 
-  // Try 1: Instagram Graph API /{igId}/messages with recipient.comment_id
-  let [ok, err] = await post(
-    `${config.IG_GRAPH}/${igId}/messages`,
-    { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
-    token,
-  );
-  if (ok) return [true, ""];
-
-  // Try 2: Facebook Graph API /{commentId}/private_replies
-  console.log(`Private reply endpoint 1 failed (${err}); trying /{commentId}/private_replies...`);
-  [ok, err] = await post(
-    `${config.GRAPH}/${commentId}/private_replies`,
-    { message: text.slice(0, 1000) },
-    token,
-  );
-  if (ok) return [true, ""];
-
-  // Try 3: Facebook Graph API /{igId}/messages
-  console.log(`Private reply endpoint 2 failed (${err}); trying Facebook /{igId}/messages...`);
   return post(
-    `${config.GRAPH}/${igId}/messages`,
+    `${config.IG_GRAPH}/${igId}/messages`,
     { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
     token,
   );
@@ -121,23 +102,11 @@ async function publicReply(commentId, text, tenantId = null) {
     return [false, "Instagram token missing (IG_TOKEN not configured)"];
   }
 
-  let [ok, err] = await post(
+  return post(
     `${config.IG_GRAPH}/${commentId}/replies`,
     { message: text.slice(0, 300) },
     token,
   );
-  if (ok) return [true, ""];
-
-  // Fallback to Facebook Graph API if IG_GRAPH host fails
-  if (config.IG_GRAPH_HOST !== "graph.facebook.com") {
-    console.log(`Public reply IG_GRAPH failed (${err}); trying Facebook Graph API...`);
-    return post(
-      `${config.GRAPH}/${commentId}/replies`,
-      { message: text.slice(0, 300) },
-      token,
-    );
-  }
-  return [ok, err];
 }
 
 /** Standard DM. Only valid inside the 24-hour window. */
