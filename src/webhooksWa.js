@@ -35,7 +35,7 @@ router.get("/webhook", (req, res) => {
 router.post("/webhook", requireValidSignature, (req, res) => {
   // Meta expects a fast 200, so the work happens after we have replied.
   const payload = req.body || {};
-  logPayload("wa-webhook payload:", payload);
+  console.log("📥 INBOUND WHATSAPP WEBHOOK RECEIVED:", JSON.stringify(payload));
   res.status(200).send("OK");
   process_(payload).catch((err) =>
     console.error("whatsapp payload failed:", err?.stack || err));
