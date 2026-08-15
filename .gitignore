@@ -1,5 +1,11 @@
 node_modules/
+
+# Every .env variant holds live credentials — except the example, which is
+# deliberately tracked and contains no usable secret.
 .env
+.env.*
+!.env.example
+
 *.db
 *.db-wal
 *.db-shm

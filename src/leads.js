@@ -133,16 +133,49 @@ export function handOff(leadId, reason = "") {
   crm.pushLead(leadId);
 }
 
-/** Queue a WhatsApp alert to the agent. Hot leads should feel urgent. */
+/** Queue a WhatsApp alert to the agent. Hot leads should feel urgent.
+ *
+ * Note which way the 24-hour window runs here. The *agent* is the recipient,
+ * and an agent has almost certainly never messaged the business number — so
+ * there is no open window and a free-form send fails with error 131047. An
+ * approved template is the only reliable way to reach them, which is what
+ * WA_ALERT_TEMPLATE is for. Without one configured we still queue the text and
+ * say so, because on a dedicated number an agent who has replied recently does
+ * get it, and a lost alert should be visible rather than silent.
+ */
 export function notifyAgent(agentWaId, leadId) {
   const lead = db.getLead(leadId);
   if (!lead) return;
   const tenant = lead.tenant_id ? tenants.get(lead.tenant_id) : null;
+
+  const who = lead.name || lead.ig_username || "Unknown";
+  const band = lead.band || "NEW";
+  const summary = summaryLine(lead);
+  const link = `${config.PUBLIC_BASE_URL}/admin#lead-${leadId}`;
+
+  if (config.WA_ALERT_TEMPLATE) {
+    db.enqueue("whatsapp", "wa_template", {
+      to: agentWaId,
+      template: config.WA_ALERT_TEMPLATE,
+      language: config.WA_TEMPLATE_LANG,
+      // Body placeholders {{1}}..{{5}}, in this order.
+      params: [band, String(lead.score), `${who} (+${lead.wa_id || "—"})`, summary, link],
+      tenant_id: lead.tenant_id ?? null,
+    }, leadId);
+    return;
+  }
+
+  console.warn(
+    "WA_ALERT_TEMPLATE is not configured — the agent alert is being sent as " +
+    "free-form text, which Meta rejects unless that agent messaged the business " +
+    "number in the last 24 hours. Create a template and set WA_ALERT_TEMPLATE.",
+  );
   const text =
-    `🔔 *${lead.band || "NEW"} lead* · score ${lead.score}` +
+    `🔔 *${band} lead* · score ${lead.score}` +
     (tenant ? ` · ${tenant.name}` : "") + "\n" +
-    `${lead.name || lead.ig_username || "Unknown"} (+${lead.wa_id || "—"})\n` +
-    `${summaryLine(lead)}\n` +
-    `Ref ${lead.ref_code} · ${config.PUBLIC_BASE_URL}/admin#lead-${leadId}`;
-  db.enqueue("whatsapp", "wa_text", { to: agentWaId, text }, leadId);
+    `${who} (+${lead.wa_id || "—"})\n` +
+    `${summary}\n` +
+    `Ref ${lead.ref_code} · ${link}`;
+  db.enqueue("whatsapp", "wa_text", { to: agentWaId, text,
+                                      tenant_id: lead.tenant_id ?? null }, leadId);
 }

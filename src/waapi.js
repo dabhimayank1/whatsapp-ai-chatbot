@@ -97,6 +97,36 @@ async function sendList(to, body, button, options, phoneNumberId = "") {
   }, phoneNumberId);
 }
 
+/** Send an approved message template.
+ *
+ * This is the ONLY thing the Cloud API accepts more than 24 hours after the
+ * customer's last inbound message — a free-form send there fails with error
+ * 131047 no matter how it is worded. It is also the only way to reach an agent
+ * who has never messaged the business number, which is every real agent.
+ *
+ * `params` fill the template's {{1}}, {{2}}… body placeholders in order.
+ */
+async function sendTemplate(to, templateName, params = [], phoneNumberId = "",
+                            language = config.WA_TEMPLATE_LANG) {
+  if (!templateName) return [false, "no template name configured"];
+  const components = params.length
+    ? [{
+        type: "body",
+        parameters: params.map((p) => ({ type: "text", text: String(p).slice(0, 1024) })),
+      }]
+    : [];
+  return post({
+    messaging_product: "whatsapp",
+    to,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: language },
+      ...(components.length ? { components } : {}),
+    },
+  }, phoneNumberId);
+}
+
 /** Build the wa.me link a viewer lands on.
  *
  * Keep the prefilled text SHORT. Long text makes people stop and read before
@@ -112,4 +142,4 @@ function waLink(refCode, prefillTemplate, propertyRef = "", businessNumber = "")
   return `https://wa.me/${number}?text=${quote(text.slice(0, 200))}`;
 }
 
-export default { sendText, sendButtons, sendList, waLink };
+export default { sendText, sendButtons, sendList, sendTemplate, waLink };

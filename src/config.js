@@ -20,6 +20,12 @@ const envInt = (key, fallback) => {
   const n = parseInt(env(key, ""), 10);
   return Number.isFinite(n) ? n : fallback;
 };
+/** Truthy env flag. Accepts 1/true/yes/on, case-insensitive. */
+const envBool = (key, fallback = false) => {
+  const raw = env(key, "").trim().toLowerCase();
+  if (!raw) return fallback;
+  return ["1", "true", "yes", "on"].includes(raw);
+};
 
 const BASE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const KB_DIR = path.join(BASE_DIR, "knowledge_base");
@@ -57,15 +63,33 @@ const config = {
 
   WHATSAPP_TOKEN: env("WHATSAPP_TOKEN"),
   PHONE_NUMBER_ID,
-  WA_VERIFY_TOKEN: env("WA_VERIFY_TOKEN", env("VERIFY_TOKEN", "changeme")),
+  // No default: an unset verify token must fail the handshake, not accept a
+  // published placeholder.
+  WA_VERIFY_TOKEN: env("WA_VERIFY_TOKEN", env("VERIFY_TOKEN")),
   WA_BUSINESS_NUMBER: env("WA_BUSINESS_NUMBER", "919876543210"), // for wa.me links
+  // Prefixed onto a bare national number typed into the desktop callback form.
+  // wa_id must always be full international format or sends to it will fail.
+  DEFAULT_COUNTRY_CODE: env("DEFAULT_COUNTRY_CODE", "91"),
 
   IG_TOKEN: env("IG_TOKEN"),
   IG_USER_ID: env("IG_USER_ID"),
-  IG_VERIFY_TOKEN: env("IG_VERIFY_TOKEN", env("WA_VERIFY_TOKEN", "my-secret-verify-token-123")),
+  IG_VERIFY_TOKEN: env("IG_VERIFY_TOKEN"),
+
+  // Meta signs every webhook POST with this (App Dashboard → Settings → Basic →
+  // App Secret). Without it there is nothing stopping a stranger from POSTing a
+  // forged comment and making us DM anyone on our tokens.
+  META_APP_SECRET: env("META_APP_SECRET"),
+  // Only turn this off to debug locally, and never on a public URL.
+  VERIFY_WEBHOOK_SIGNATURE: envBool("VERIFY_WEBHOOK_SIGNATURE", true),
 
   ADMIN_USER: env("ADMIN_USER", "admin"),
-  ADMIN_PASSWORD: env("ADMIN_PASSWORD", "admin"),
+  // No default. An unset admin password disables the admin login entirely
+  // rather than silently accepting a guessable one.
+  ADMIN_PASSWORD: env("ADMIN_PASSWORD"),
+  // Preferred over ADMIN_PASSWORD: a scrypt hash in Werkzeug's format, as
+  // produced by `node -e "import('./src/passwords.js').then(p=>console.log(
+  // p.generatePasswordHash('yourpassword')))"`.
+  ADMIN_PASSWORD_HASH: env("ADMIN_PASSWORD_HASH"),
 
   // Signs the session cookie. A random value per boot logs everyone out on
   // restart, which is safe but annoying — set this in .env for production.
@@ -91,6 +115,51 @@ const config = {
   // ---------------------------------------------------------------- identity
   BUSINESS_NAME,
   DOMAIN_NAME,
+
+  // ------------------------------------------------------------------ tenancy
+  // One Instagram account and one client on this deployment. When on, a webhook
+  // event we cannot map to a tenant falls back to the sole active tenant, and an
+  // inbound WhatsApp message with no ref code and no dedicated number does too.
+  //
+  // Leave this OFF the moment a second client exists: the fallback is exactly
+  // what would attribute one client's lead to another. With it off, an
+  // unmappable event is logged and dropped instead.
+  SINGLE_TENANT_MODE: envBool("SINGLE_TENANT_MODE", false),
+
+  // --------------------------------------------------- whatsapp 24-hour window
+  // The Cloud API refuses free-form messages more than 24h after the customer's
+  // last inbound one (error 131047). Business-initiated messages need an
+  // approved template. Name the templates here to enable those sends at all.
+  WA_ALERT_TEMPLATE: env("WA_ALERT_TEMPLATE"),      // agent "new hot lead" alert
+  WA_REENGAGE_TEMPLATE: env("WA_REENGAGE_TEMPLATE"), // customer outside 24h
+  WA_TEMPLATE_LANG: env("WA_TEMPLATE_LANG", "en"),
+  WA_WINDOW_HOURS: envInt("WA_WINDOW_HOURS", 24),
+
+  // Whole-message matches that opt a customer out. Policy requires honouring
+  // these, and complaint rate is what gets a number restricted.
+  OPT_OUT_KEYWORDS: ["stop", "unsubscribe", "opt out", "optout", "stop all",
+                     "band karo", "block"],
+  OPT_OUT_MESSAGE:
+    "Done — you won't get any more messages from us. " +
+    "Reply *start* if you ever want to continue. 👋",
+  OPT_IN_KEYWORDS: ["start", "resume", "subscribe"],
+  OPT_IN_MESSAGE: "Welcome back! How can I help? 🙂",
+
+  // ------------------------------------------------------------------ logging
+  // Webhook payloads carry phone numbers, names and message text. Off by
+  // default so they never reach a hosting provider's log stream.
+  LOG_WEBHOOK_PAYLOADS: envBool("LOG_WEBHOOK_PAYLOADS", false),
+  LOG_REDACT_PII: envBool("LOG_REDACT_PII", true),
+
+  // ---------------------------------------------------------------- retention
+  // processed_events only ever grows otherwise. Meta stops retrying long
+  // before this, so anything older cannot still need deduplicating.
+  PROCESSED_EVENT_RETENTION_DAYS: envInt("PROCESSED_EVENT_RETENTION_DAYS", 7),
+
+  // ------------------------------------------------------------------- cookies
+  // Send the session cookie over HTTPS only. Defaults on in production.
+  COOKIE_SECURE: envBool("COOKIE_SECURE", env("NODE_ENV") === "production"),
+  TRUST_PROXY: envBool("TRUST_PROXY", env("NODE_ENV") === "production"),
 
   HISTORY_TURNS: 10,
   ESCALATE_AFTER_OUT_OF_SCOPE: 3,
@@ -145,6 +214,64 @@ const config = {
 };
 
 config.KNOWLEDGE_BASE = loadKnowledgeBase();
+
+/** Shout about anything that is insecure rather than merely unconfigured.
+ *
+ * Returns the list of warnings so /health can report them and a deploy can be
+ * checked without reading the logs.
+ */
+export function validateSecurity() {
+  const warnings = [];
+
+  if (!config.META_APP_SECRET) {
+    warnings.push(
+      "META_APP_SECRET is not set — webhook payloads CANNOT be verified. Anyone " +
+      "who knows your webhook URL can forge comments and make the bot send " +
+      "messages on your tokens. Set it from Meta App Dashboard → Settings → Basic.",
+    );
+  } else if (!config.VERIFY_WEBHOOK_SIGNATURE) {
+    warnings.push(
+      "VERIFY_WEBHOOK_SIGNATURE is off — webhook signatures are being ignored.",
+    );
+  }
+  if (!config.WA_VERIFY_TOKEN) {
+    warnings.push("WA_VERIFY_TOKEN is not set — /webhook cannot complete Meta's handshake.");
+  }
+  if (!config.IG_VERIFY_TOKEN) {
+    warnings.push("IG_VERIFY_TOKEN is not set — /ig-webhook cannot complete Meta's handshake.");
+  }
+  if (!config.ADMIN_PASSWORD_HASH && !config.ADMIN_PASSWORD) {
+    warnings.push("Neither ADMIN_PASSWORD_HASH nor ADMIN_PASSWORD is set — admin login is disabled.");
+  }
+  if (config.ADMIN_PASSWORD && !config.ADMIN_PASSWORD_HASH) {
+    warnings.push(
+      "ADMIN_PASSWORD is stored in plaintext in the environment. Prefer " +
+      "ADMIN_PASSWORD_HASH (see .env.example).",
+    );
+  }
+  if (["admin", "password", "change-me", "changeme"].includes(
+        (config.ADMIN_PASSWORD || "").toLowerCase())) {
+    warnings.push("ADMIN_PASSWORD is a well-known default — change it now.");
+  }
+  if (!env("SECRET_KEY")) {
+    warnings.push("SECRET_KEY is not set — every restart logs all portal users out.");
+  }
+  if (config.PUBLIC_BASE_URL.startsWith("https://") && !config.COOKIE_SECURE) {
+    warnings.push("COOKIE_SECURE is off on an HTTPS deployment — set COOKIE_SECURE=true.");
+  }
+  if (config.LOG_WEBHOOK_PAYLOADS) {
+    warnings.push("LOG_WEBHOOK_PAYLOADS is on — customer phone numbers and message text are being logged.");
+  }
+
+  if (warnings.length) {
+    console.warn("\n  ⚠  Configuration warnings");
+    for (const w of warnings) console.warn(`     · ${w}`);
+    console.warn("");
+  } else {
+    console.log("Security configuration: OK");
+  }
+  return warnings;
+}
 
 export function validateIgConfig() {
   const isConfigured = Boolean(config.IG_TOKEN);

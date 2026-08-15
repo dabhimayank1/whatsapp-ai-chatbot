@@ -10,9 +10,11 @@
   "scripts": {
     "start": "node src/app.js",
     "seed": "node seedDemo.js",
-    "test": "node testFunnel.js && node testMultitenant.js",
+    "test": "node testFunnel.js && node testMultitenant.js && node testSecurity.js",
     "test:funnel": "node testFunnel.js",
-    "test:multitenant": "node testMultitenant.js"
+    "test:multitenant": "node testMultitenant.js",
+    "test:security": "node testSecurity.js",
+    "hash-password": "node --input-type=module -e \"import('./src/passwords.js').then(p=>{const pw=process.argv[1];if(!pw){console.error('usage: npm run hash-password -- <password>');process.exit(1)}console.log(p.generatePasswordHash(pw))})\""
   },
   "dependencies": {
     "cookie-session": "^2.1.0",

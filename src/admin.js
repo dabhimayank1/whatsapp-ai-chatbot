@@ -12,6 +12,7 @@ import * as auth from "./auth.js";
 import * as crm from "./crm.js";
 import * as db from "./database.js";
 import * as leadsMod from "./leads.js";
+import * as privacy from "./privacy.js";
 import * as tenants from "./tenants.js";
 import waapi from "./waapi.js";
 import * as worker from "./worker.js";
@@ -28,12 +29,17 @@ function guard(req, leadId) {
 // ----------------------------------------------------------------------- auth
 router.get("/login", (req, res) => res.render("login.html", {}));
 
-router.post("/login", (req, res) => {
+router.post("/login", auth.loginLimiter, (req, res) => {
   const data = req.body || {};
   const role = auth.authenticate(req, data.username || "", data.password || "");
   if (!role) {
+    console.warn(`failed login for '${String(data.username || "").slice(0, 32)}'`);
     return res.status(401).render("login.html", { error: "Wrong username or password." });
   }
+  // A successful login clears the throttle, so a user who mistyped twice and
+  // then got it right is not still counting against the limit.
+  auth.loginLimiter.reset(
+    `${req.ip}|${String(data.username || "").toLowerCase()}`);
   return res.redirect("/admin");
 });
 
@@ -68,16 +74,34 @@ router.get("/api/funnel", auth.requireLogin, (req, res) => {
     leaks: db.leakReport(mediaId, tid),
     variants: db.variantReport(tid),
     queue: auth.isAdmin(req) ? db.queueStats() : {},
+    // Dead sends, so an expired token or a closed 24h window is visible in the
+    // portal instead of only in the logs nobody reads.
+    failures: db.failureCounts(tid),
   });
+});
+
+// ------------------------------------------------------------- send failures
+router.get("/api/failures", auth.requireLogin, (req, res) =>
+  res.json(db.failedSends({ tenantId: auth.scopeTenantId(req), limit: 50 })));
+
+router.post("/api/failures/:itemId/retry", auth.requireAdmin, (req, res) => {
+  const ok = db.requeueFailed(parseInt(req.params.itemId, 10));
+  return res.status(ok ? 200 : 404).json({ ok });
 });
 
 // ---------------------------------------------------------------------- leads
 router.get("/api/leads", auth.requireLogin, (req, res) => {
+  // Bounded, and no longer a hard 200 with no way past it.
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 1000);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
   return res.json(db.allLeads({
     stage: req.query.stage || null,
     band: req.query.band || null,
     mediaId: req.query.campaign || null,
+    search: req.query.q || null,
     tenantId: auth.scopeTenantId(req),
+    limit,
+    offset,
   }));
 });
 
@@ -105,6 +129,36 @@ router.post("/api/leads/:leadId/takeover", auth.requireLogin, (req, res) => {
     db.addEvent(leadId, "BOT_RESUMED", "returned to bot");
   }
   return res.json({ ok: true, paused });
+});
+
+/** Erase a lead outright — the operator side of the privacy promise.
+ *
+ * Hard delete, not a flag: a soft-deleted lead still holds the phone number and
+ * message bodies we told the person we had removed.
+ */
+router.delete("/api/leads/:leadId", auth.requireLogin, (req, res) => {
+  const leadId = parseInt(req.params.leadId, 10);
+  const lead = guard(req, leadId);
+  if (!lead) return res.status(404).json({ error: "not found" });
+  const removed = db.purgeLead(leadId);
+  console.log(`lead ${leadId} erased by ${auth.current(req).name}`);
+  return res.json({ ok: true, removed });
+});
+
+/** Erase by identifier, for a request that arrives by email or phone. */
+router.post("/api/privacy/erase", auth.requireAdmin, (req, res) => {
+  const d = req.body || {};
+  const identifiers = {
+    waId: d.wa_id || null,
+    igUserId: d.ig_user_id || null,
+    igUsername: d.ig_username || null,
+  };
+  if (!identifiers.waId && !identifiers.igUserId && !identifiers.igUsername) {
+    return res.status(400).json({
+      ok: false, error: "give wa_id, ig_user_id or ig_username" });
+  }
+  const [code, count] = privacy.eraseSubject(identifiers, "operator request");
+  return res.json({ ok: true, confirmation_code: code, leads_erased: count });
 });
 
 router.post("/api/leads/:leadId/reply", auth.requireLogin, async (req, res) => {

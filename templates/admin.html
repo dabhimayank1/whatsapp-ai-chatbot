@@ -42,6 +42,16 @@
   h2{font-size:17px;margin:0 0 3px;letter-spacing:-.02em;}
   .hint{color:var(--muted);font-size:12.5px;margin:0 0 16px;max-width:70ch;}
 
+  /* Undelivered sends. Loud on purpose — silence here used to mean a client's
+     DMs had stopped and nobody found out. */
+  .failbox{border:1px solid #b4442c;background:rgba(180,68,44,.09);
+           border-radius:10px;padding:12px 14px;margin-bottom:18px;}
+  .failbox .failhead{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;
+                     margin-bottom:9px;}
+  .failbox .failhead b{font-size:13.5px;}
+  .failbox .hint{margin:0;}
+  .failbox table{font-size:12px;}
+
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
          gap:11px;margin-bottom:22px;}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
@@ -208,6 +218,7 @@
     <h2>Funnel</h2>
     <p class="hint">Distinct leads that reached each stage, as a share of everyone
       who entered. The two per-hop rates that matter are below.</p>
+    <div class="failbox" id="failBox" style="display:none"></div>
     <div class="cards" id="cards"></div>
     <div class="funnel" id="bars"></div>
     <div class="leaks" id="leaks"></div>
@@ -353,6 +364,7 @@ async function loadFunnel(){
   const d = await (await fetch('/api/funnel'+q())).json();
   const f = Object.fromEntries(d.funnel.map(r=>[r.stage,r.count]));
   const qp = d.queue.instagram||{}, qw = d.queue.whatsapp||{};
+  await loadFailures(d.failures||{});
   $('#cards').innerHTML = [
     ['Comments', f.COMMENTED||0, 'entered'],
     ['In chat', f.WA_ENGAGED||0, 'reached WhatsApp'],
@@ -385,6 +397,40 @@ async function loadFunnel(){
       <td class="mono">${esc(v.variant)}</td><td class="mono">${v.leads}</td>
       <td class="mono">${v.clicked}</td><td class="mono"><b>${v.click_rate}%</b></td>
       </tr>`).join('')}</tbody></table></div>` : '';
+}
+
+/* ---------------- send failures ----------------
+   A client's Instagram token expiring used to be completely silent: every DM
+   landed in outbound_queue with status='failed' and nothing in the portal ever
+   said so. This banner is the whole point — it should normally be invisible. */
+async function loadFailures(counts){
+  const box = $('#failBox');
+  if(!box) return;
+  const total = Object.values(counts).reduce((sum,byStatus)=>
+    sum + Object.values(byStatus).reduce((a,b)=>a+b,0), 0);
+  if(!total){ box.innerHTML = ''; box.style.display='none'; return; }
+
+  const rows = await (await fetch('/api/failures'+q())).json();
+  box.style.display = 'block';
+  box.innerHTML = `<div class="failhead">
+      <b>${total} message${total===1?'':'s'} were not delivered</b>
+      <span class="hint">An expired token, or a WhatsApp window that closed.</span>
+    </div>
+    <div class="tw"><table><thead><tr><th>Channel</th><th>Kind</th><th>Tries</th>
+      <th>Why</th><th>Ref</th>${ROLE==='admin'?'<th></th>':''}</tr></thead><tbody>
+      ${rows.slice(0,10).map(r=>`<tr>
+        <td class="mono">${esc(r.channel)}</td>
+        <td class="mono">${esc(r.kind)}</td>
+        <td class="mono">${r.attempts}</td>
+        <td>${esc((r.last_error||'').slice(0,110))}</td>
+        <td class="mono">${esc(r.ref_code||'—')}</td>
+        ${ROLE==='admin'?`<td><button class="act" onclick="retryFailed(${r.id})">Retry</button></td>`:''}
+      </tr>`).join('')}</tbody></table></div>`;
+}
+
+async function retryFailed(id){
+  await fetch('/api/failures/'+id+'/retry', {method:'POST'});
+  loadFunnel();
 }
 
 /* ---------------- leads ---------------- */

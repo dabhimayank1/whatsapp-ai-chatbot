@@ -276,5 +276,8 @@ check("leak counts are self-consistent",
 check("variant report populated", db.variantReport().length >= 1);
 
 // ---------------------------------------------------------------------- result
+// Orderly shutdown, then let the loop drain — see the note in testMultitenant.js.
 client.close();
-process.exit(finish());
+worker.stop();
+db.closeDb();
+process.exitCode = finish();

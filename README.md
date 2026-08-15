@@ -11,7 +11,22 @@ Reel comment → auto-DM → tracked link → WhatsApp bot → qualified → age
 ```
 
 This is a straight port of the Python/Flask original in `../boat`. Same
-architecture, same SQLite schema, same behaviour, same 98 checks.
+architecture, same SQLite schema, same behaviour.
+
+---
+
+## Before you deploy this anywhere public
+
+Two settings decide whether this app is safe to expose. Neither has a usable
+default, on purpose.
+
+| Set this | Or else |
+|---|---|
+| `META_APP_SECRET` | Webhook payloads cannot be verified, and anyone who learns your webhook URL can forge Instagram comments and make the bot send DMs on your tokens. `GET /health` reports `webhook_signature: unavailable` until you set it. |
+| `ADMIN_PASSWORD_HASH` (or `ADMIN_PASSWORD`) | The admin login is disabled. It used to default to `admin`. Generate a hash with `npm run hash-password -- 'your-password'`. |
+
+`SINGLE_TENANT_MODE` is the third one to understand: leave it **off** unless this
+deployment serves exactly one client. See [Multi-tenant](#multi-tenant-in-one-paragraph).
 
 ---
 
@@ -20,6 +35,12 @@ architecture, same SQLite schema, same behaviour, same 98 checks.
 ```bash
 npm install
 ```
+
+```bash
+npm test
+```
+
+188 checks across three suites, all offline — no Groq key, no Meta credentials.
 
 ```bash
 npm run test:funnel
@@ -36,6 +57,15 @@ npm run test:multitenant
 45 checks proving tenant isolation: two clients in different verticals on one
 shared WhatsApp number, each refusing the other's topic, with an influencer
 login unable to reach another client's data.
+
+```bash
+npm run test:security
+```
+
+90 checks on the things that are invisible when they work: webhook signature
+verification, the subscription handshake, tenant resolution refusing to guess,
+the WhatsApp 24-hour window, opt-out, deletion actually deleting, and admin
+login throttling.
 
 ```bash
 npm run seed
@@ -88,6 +118,22 @@ clients**: a gym enquiry and a property enquiry arrive on the same number and
 never see each other. Clients who want their own branded number get one
 (`wa_phone_number_id`); Business Verification is per business, not per number,
 so you verify your company once and hang up to 25 numbers off it.
+
+### An event that cannot be mapped to a tenant is dropped
+
+That rule is load-bearing. Resolution goes: **ref code** (minted for exactly one
+lead, so it is proof) → **dedicated phone number** → **an existing conversation
+with this person**. If none of those match, the event is logged and dropped, and
+an inbound WhatsApp message becomes an unattributed lead rather than being
+assigned to a guess.
+
+`SINGLE_TENANT_MODE=true` relaxes this to "fall back to the only active tenant",
+which is correct when you have one client and wrong the moment you have two. It
+refuses to engage unless exactly one tenant is active, so it cannot silently
+misroute — but turn it off before onboarding client number two.
+
+There is no name matching. Searching the customer's message text for a client's
+name handed "hi priya, is the gym open?" from a stranger straight to the gym.
 
 | Per tenant | Where |
 |---|---|
@@ -184,11 +230,18 @@ If a viewer edits the prefilled text away, the lead is still created as
 | `src/worker.js` | Outbound queue, rate limiting, recovery, CRM drain |
 | `src/crm.js` | Swappable CRM adapter + outbox |
 | `src/admin.js` | Portal routes and JSON API, scoped on every route |
+| `src/security.js` | **Webhook signature verification**, rate limiting, log redaction |
+| `src/privacy.js` | Policy page, deletion endpoints, Meta's deletion callback |
 | `src/passwords.js` | Werkzeug-compatible password hashing |
 | `src/strings.js` | `{placeholder}` formatting and URL quoting |
 | `testFunnel.js` | 53-check end-to-end suite |
-| `testMultitenant.js` | 45-check isolation and security suite |
+| `testMultitenant.js` | 45-check isolation suite |
+| `testSecurity.js` | 90-check authenticity, consent and privacy suite |
 | `seedDemo.js` | Three demo clients across three verticals |
+
+Demo seeding is skipped when `NODE_ENV=production` unless you pass
+`SEED_DEMO_TENANTS=true`. On a host with no persistent disk it was recreating
+three clients with the password `demo123` after every deploy.
 
 ---
 
@@ -208,6 +261,68 @@ The worker spends its hourly budget oldest-first with exponential backoff, and
 **Run a single process.** The queue drainer is an interval timer inside the web
 process; two instances would both drain the queue and blow past the rate limit.
 If you need more web capacity, split the worker out into its own process first.
+`render.yaml` pins `numInstances: 1` for this reason.
+
+---
+
+## The WhatsApp 24-hour window
+
+The Cloud API refuses free-form messages more than 24 hours after the customer's
+last inbound message — error 131047, no matter how the message is worded. Only an
+approved template gets through.
+
+Every inbound message records `leads.last_inbound_at`, and the worker checks it
+before sending. Outside the window it either uses `WA_REENGAGE_TEMPLATE` or
+cancels the row with the reason attached, rather than retrying into a wall.
+
+**The case that catches everyone: agent alerts.** A hot-lead alert goes to *your
+team*, who have almost certainly never messaged the business number — so there is
+no open window and a plain-text alert always fails. Set `WA_ALERT_TEMPLATE` to an
+approved template with five body placeholders: band, score, name and number,
+answers, dashboard link.
+
+Cancelled and failed sends appear in a banner at the top of the Funnel tab, with
+the Meta error and a retry button. That banner is the point: an expired token
+used to mean a client's DMs stopped silently.
+
+---
+
+## Consent
+
+A whole-message `stop` / `unsubscribe` / `opt out` sets `leads.opted_out`, pauses
+the bot, cancels anything already queued for that number, and sends one
+confirmation. `start` reverses it. Matching is on the whole message, so "can I
+stop by at 6?" is a question, not an opt-out. Later messages from an opted-out
+person are recorded for the agent but get no automated reply.
+
+Policy requires honouring this, and complaint rate is what gets a number
+restricted.
+
+---
+
+## Privacy and deletion
+
+`/privacy` states what is collected and carries a form that deletes it. Deletion
+is a hard delete — the lead, its messages, answers, events, queued sends and CRM
+rows all go, and an audit row keeps the confirmation code and count while
+retaining nothing that identifies the requester.
+
+| Route | Purpose |
+|---|---|
+| `GET /privacy` | policy, and the deletion form |
+| `POST /privacy/delete-request` | someone deleting their own data |
+| `POST /data-deletion` | Meta's signed data-deletion callback (App Review needs this) |
+| `GET /data-deletion/status/:code` | the status URL that callback returns |
+| `DELETE /api/leads/:id` | operator deleting one lead |
+| `POST /api/privacy/erase` | operator deleting by number or username |
+
+Point Meta's **Data Deletion Request URL** at `POST /data-deletion`. It verifies
+the `signed_request` against `META_APP_SECRET` and rejects anything unsigned —
+otherwise the endpoint would let anyone delete any user's data by guessing an id.
+
+Webhook payload logging is off by default (`LOG_WEBHOOK_PAYLOADS`), because those
+payloads carry phone numbers and message bodies and a hosting provider's log
+stream is not somewhere you can delete them from.
 
 ---
 
@@ -215,10 +330,15 @@ If you need more web capacity, split the worker out into its own process first.
 
 ### WhatsApp
 
-1. Meta app → add **WhatsApp** → copy the token and Phone number ID into `.env`
-2. `ngrok http 5000`, put `PUBLIC_BASE_URL` in `.env`
-3. Webhook callback `https://…/webhook`, verify token = `WA_VERIFY_TOKEN`
-4. Subscribe to the `messages` field
+1. Meta app → **Settings → Basic → App Secret** into `META_APP_SECRET`. Do this
+   first; without it no webhook can be authenticated.
+2. Meta app → add **WhatsApp** → copy the token and Phone number ID into `.env`
+3. `ngrok http 5000`, put `PUBLIC_BASE_URL` in `.env`
+4. Webhook callback `https://…/webhook`, verify token = `WA_VERIFY_TOKEN`
+   (invent your own — there is no default, and an unset token fails the handshake)
+5. Subscribe to the `messages` field
+6. WhatsApp Manager → **Message templates** → create the agent alert template and
+   set `WA_ALERT_TEMPLATE`
 
 ### Instagram
 
@@ -229,9 +349,15 @@ be linked to a Facebook Page.
 2. Meta app → add **Instagram** → Instagram Login
 3. Request scopes: `instagram_business_basic`,
    `instagram_business_manage_comments`, `instagram_business_manage_messages`
-4. Webhook callback `https://…/ig-webhook`, verify token = `IG_VERIFY_TOKEN`
+4. Webhook callback `https://…/ig-webhook`, verify token = `IG_VERIFY_TOKEN`.
+   It must differ from `WA_VERIFY_TOKEN`, and the placeholder strings in
+   `.env.example` are not accepted — they are published, so they are not secrets.
 5. Subscribe to the `comments` and `messages` fields
-6. Add each reel in the dashboard's **Campaigns** tab with its media ID
+6. **Data Deletion Request URL** → `https://…/data-deletion`
+7. Add each reel in the dashboard's **Campaigns** tab with its media ID. A comment
+   on a reel you have not registered still works — the keyword match borrows
+   another campaign's copy and a campaign row is created for the real reel, so
+   per-reel numbers stay honest. Rename it in the Campaigns tab.
 
 > ⚠️ **App Review is the critical path — submit on day one.** It takes weeks and
 > needs a screencast and a published privacy policy. Everything except the
@@ -282,20 +408,51 @@ to the global `IG_TOKEN` instead of the owning client's Instagram account —
 wrong sender on a multi-tenant deployment. Every other outbound Instagram call
 already passed the tenant through.
 
+**The schema has diverged.** `leads` gained `last_inbound_at` and `opted_out`, and
+there is a new `deletion_log` table. `database.migrate()` adds the columns to an
+existing database on boot, so upgrading in place is safe — but the Python app
+would need the same columns before the two can share one file again.
+
+---
+
+## Deliberate omissions
+
+Things a reviewer might expect that are absent on purpose, so they read as
+decisions rather than oversights:
+
+- **No CSRF tokens.** The session cookie is `SameSite=Lax`, which browsers do not
+  attach to cross-site POSTs, so a form on another origin cannot act as a logged-in
+  user. The unauthenticated form that does exist — the desktop callback — is rate
+  limited instead, because each submission queues an agent alert.
+- **No Redis for rate limiting.** The app is documented to run as one process, so
+  in-memory counters are the honest implementation. Run two instances and the login
+  limiter becomes per-instance.
+- **No vector database.** One business's knowledge is a few thousand tokens against
+  Groq's 128k context. Add retrieval past ~30k.
+- **Failed sends are surfaced, not alerted on.** They appear in the portal; nothing
+  emails you. Wire `GET /api/failures` into whatever you already watch.
+
 ---
 
 ## Deploying free
 
 | Need | Service | Catch |
 |---|---|---|
-| Hosting | Render free web service | Sleeps after 15 min → ~50 s cold start. Ping `/health` every 10 min from cron-job.org. |
-| Database | [Turso](https://turso.tech) | Free hosting has no persistent disk, so the local `.db` is wiped on redeploy. |
+| Hosting | Render free web service | Sleeps after 15 min → ~50 s cold start, and **the worker sleeps with it**, so the queue and recovery nudges stall until something wakes the process. Ping `/health` every 10 min from cron-job.org. |
+| Database | Mounted disk, or [Turso](https://turso.tech) | Free hosting has no persistent disk, so the local `.db` — every lead you have — is wiped on redeploy. |
 | AI | Groq | 14,400 requests/day free |
 | CRM | Zoho / HubSpot free, or `CRM_ADAPTER=webhook` into Zapier or n8n | |
+
+`render.yaml` is a working blueprint: one instance, a mounted disk at
+`/var/data`, `DB_PATH` pointed at it, and every secret marked `sync: false` so it
+comes from the dashboard rather than the repo.
 
 ```bash
 node src/app.js
 ```
 
-Once leads have real value, move off the free tier — a ₹350/month VPS removes
-the cold starts.
+SIGTERM is handled, so a deploy stops the worker and closes the database rather
+than being killed mid-send and stranding claimed queue rows for ten minutes.
+
+**The free tier's ephemeral disk is the real risk here, not the cold starts.**
+Once leads have value, mount a disk or move to a ₹350/month VPS.

@@ -22,6 +22,7 @@ import express from "express";
 import config from "./config.js";
 import * as db from "./database.js";
 import * as leads from "./leads.js";
+import { logPayload, requireValidSignature, shortId } from "./security.js";
 import { fmt } from "./strings.js";
 import * as tenants from "./tenants.js";
 import waapi from "./waapi.js";
@@ -38,40 +39,48 @@ const DEFAULT_ONE_STEP =
 const DEFAULT_PUBLIC =
   "Just sent you a DM 📩 (check your Message Requests if it's not there!)";
 
+/** Meta's subscription handshake.
+ *
+ * The token must match IG_VERIFY_TOKEN exactly. Earlier versions also accepted
+ * WA_VERIFY_TOKEN and two hardcoded strings — but those strings ship in
+ * .env.example and the README, so anyone could complete this handshake and
+ * point their own Meta app at this endpoint.
+ */
 router.get("/ig-webhook", (req, res) => {
   const token = req.query["hub.verify_token"];
-  if (req.query["hub.mode"] === "subscribe" &&
-      (token === config.IG_VERIFY_TOKEN || token === config.WA_VERIFY_TOKEN || token === "my-secret-ig-token-456" || token === "my-secret-verify-token-123")) {
-    console.log("instagram webhook verified successfully");
+  const expected = config.IG_VERIFY_TOKEN;
+
+  if (!expected) {
+    console.error("ig-webhook handshake refused: IG_VERIFY_TOKEN is not configured");
+    return res.status(403).send("Verification failed");
+  }
+  if (req.query["hub.mode"] === "subscribe" && token === expected) {
+    console.log("instagram webhook verified");
     return res.status(200).send(req.query["hub.challenge"] || "");
   }
-  console.warn(`instagram webhook verification failed. Received token: ${token}`);
+  console.warn("instagram webhook verification failed: token did not match");
   return res.status(403).send("Verification failed");
 });
 
-router.post("/ig-webhook", async (req, res) => {
+router.post("/ig-webhook", requireValidSignature, async (req, res) => {
   const payload = req.body || {};
-  console.log("=== INSTAGRAM WEBHOOK RECEIVED ===");
-  console.log(JSON.stringify(req.body, null, 2));
 
+  logPayload("ig-webhook payload:", payload);
+  const entries = payload.entry || [];
   console.log(
-    "Instagram webhook entry IDs:",
-    (req.body?.entry || []).map((e) => e.id),
+    `ig-webhook: ${entries.length} entr${entries.length === 1 ? "y" : "ies"}, ` +
+    `accounts=[${entries.map((e) => shortId(e.id)).join(",")}], ` +
+    `fields=[${entries.flatMap((e) => (e.changes || []).map((c) => c.field)).join(",")}]`,
   );
 
-  console.log(
-    "Instagram webhook fields:",
-    (req.body?.entry || []).flatMap((e) =>
-      (e.changes || []).map((c) => c.field),
-    ),
-  );
-
+  // Reply first: Meta retries anything that is slow, and a retry storm on a
+  // reel that is taking off is the last thing we need.
+  res.status(200).send("OK");
   try {
     await process_(payload);
   } catch (err) {
     console.error("instagram payload failed:", err?.stack || err);
   }
-  return res.status(200).send("OK");
 });
 
 export async function process_(payload) {
@@ -107,18 +116,33 @@ function onComment(value, recipientIgId = "") {
   const igUserId = author.id || "";
   const username = author.username || "";
 
-  if (!commentId || db.alreadyProcessed(`cmt:${commentId}`)) return;
+  if (!commentId) return;
+
+  // Claim the event id up front so two overlapping retries cannot both act on
+  // it. Anything that bails out below must release the claim, or Meta's retry
+  // would be deduplicated away and the lead lost for good.
+  if (!db.claimEvent(`cmt:${commentId}`)) return;
+  const giveUp = () => { db.releaseEvent(`cmt:${commentId}`); };
 
   const tenant = tenants.byInstagram(recipientIgId);
   if (!tenant) {
-    console.warn(`comment on unknown Instagram account ${recipientIgId} — ignoring`);
+    console.warn(
+      `comment on Instagram account ${shortId(recipientIgId)} which no active ` +
+      "tenant claims — ignoring. Set that account's id on the client in the " +
+      "portal, or set SINGLE_TENANT_MODE=true if this deployment serves one client.",
+    );
+    giveUp();
     return;
   }
-  if (igUserId && igUserId === tenant.ig_user_id) return; // the influencer's own reply
+  if (igUserId && igUserId === tenant.ig_user_id) {
+    giveUp();
+    return; // the influencer's own reply
+  }
 
   const campaign = db.matchCampaign(mediaId, text, tenant.id);
   if (!campaign) {
     console.log(`comment ${commentId} did not match a campaign keyword`);
+    giveUp();
     return;
   }
   if (campaign.tenant_id && campaign.tenant_id !== tenant.id) {
@@ -126,9 +150,12 @@ function onComment(value, recipientIgId = "") {
       `campaign ${mediaId} belongs to tenant ${campaign.tenant_id} but the comment ` +
       `arrived on tenant ${tenant.id} — refusing to cross tenants`,
     );
+    giveUp();
     return;
   }
 
+  // null means a lead already exists for this comment, so the work was done on
+  // an earlier delivery. Keep the claim — this really is a duplicate.
   const lead = leads.leadFromComment(campaign, commentId, igUserId, username);
   if (!lead) return;
 
@@ -180,11 +207,15 @@ function onDm(msg, recipientIgId = "") {
   const tenant = tenants.byInstagram(recipientIgId);
   // unknown account, or our own outbound message echoing back
   if (!tenant || !sender || sender === tenant.ig_user_id) return;
-  if (mid && db.alreadyProcessed(`igm:${mid}`)) return;
+  if (!db.claimEvent(`igm:${mid}`)) return;
 
-  const lead = db.leadByIgUser(sender);
-  if (!lead || lead.tenant_id !== tenant.id) {
-    console.log(`DM from ${sender} with no matching lead on tenant ${tenant.id}`);
+  // Scoped to this tenant on purpose. Unscoped, a viewer who commented on two
+  // clients' reels resolves to whichever lead is newest, and the other client's
+  // step-2 link is dropped as "no matching lead".
+  const lead = db.leadByIgUser(sender, tenant.id);
+  if (!lead) {
+    console.log(`DM from ${shortId(sender)} with no matching lead on tenant ${tenant.id}`);
+    db.releaseEvent(`igm:${mid}`);
     return;
   }
 

@@ -1,0 +1,75 @@
+# Render blueprint.
+#
+# Two things to know before trusting this in production:
+#
+# 1. ONE INSTANCE ONLY. The queue drainer is an interval inside the web process,
+#    and two instances would both drain it and blow past Meta's hourly cap.
+#    numInstances is pinned to 1 for that reason — do not raise it without
+#    splitting the worker into its own service first.
+#
+# 2. THE FREE TIER HAS NO PERSISTENT DISK. chatbot.db is wiped on every deploy,
+#    which means every lead is lost. The disk block below is the fix and needs a
+#    paid instance type. Until then, treat the data as disposable.
+services:
+  - type: web
+    name: socialtosales
+    runtime: node
+    plan: starter          # 'free' has no disk; see note 2 above
+    numInstances: 1        # see note 1 above
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+
+    # Survives redeploys. Without it the database is ephemeral.
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22.11.0"
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /var/data/chatbot.db
+      - key: CRM_CSV_PATH
+        value: /var/data/crm_export.csv
+
+      # Generated once by Render and then held — regenerating it logs every
+      # portal user out.
+      - key: SECRET_KEY
+        generateValue: true
+
+      # Everything below must be set in the Render dashboard. They are secrets
+      # or deployment-specific, so they are deliberately not values here.
+      - key: META_APP_SECRET        # webhook signature verification
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: PHONE_NUMBER_ID
+        sync: false
+      - key: WA_VERIFY_TOKEN
+        sync: false
+      - key: WA_BUSINESS_NUMBER
+        sync: false
+      - key: IG_TOKEN
+        sync: false
+      - key: IG_USER_ID
+        sync: false
+      - key: IG_VERIFY_TOKEN
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASSWORD_HASH     # prefer this over ADMIN_PASSWORD
+        sync: false
+      - key: SINGLE_TENANT_MODE      # 'true' only while one client exists
+        sync: false
+      - key: WA_ALERT_TEMPLATE       # approved template for agent alerts
+        sync: false
+      - key: CRM_ADAPTER
+        value: csv

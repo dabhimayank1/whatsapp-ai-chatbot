@@ -25,6 +25,41 @@ let _timer = null;
 let _running = false;
 
 // --------------------------------------------------------------- send dispatch
+const WA_KINDS = new Set(["wa_text", "wa_buttons", "wa_list"]);
+
+/**
+ * May we send this WhatsApp row at all? Returns [allowed, reasonIfNot].
+ *
+ * Two gates, both of which the Cloud API or Meta policy would otherwise enforce
+ * for us — the first by rejecting the call, the second by counting complaints.
+ *
+ *   opt-out   the recipient replied STOP. Never send again.
+ *   24h window free-form messages are only legal within 24 hours of the
+ *             customer's last inbound message. Outside it we either use an
+ *             approved template or we do not send.
+ *
+ * The window only applies to messages aimed at the customer. An agent alert
+ * goes to a different number entirely and has its own template setting.
+ */
+function whatsappGate(item, payload) {
+  if (!WA_KINDS.has(item.kind)) return [true, ""];
+  const to = String(payload.to || "");
+  if (!to) return [false, "no recipient"];
+
+  if (db.isOptedOut(to)) return [false, "recipient has opted out"];
+
+  const lead = item.lead_id ? db.getLead(item.lead_id) : null;
+  if (!lead) return [true, ""];
+
+  // Aimed at someone other than this lead's customer — an agent alert.
+  if (lead.wa_id && to !== lead.wa_id) return [true, ""];
+
+  if (db.isWindowOpen(lead)) return [true, ""];
+  return [false,
+          `outside the ${config.WA_WINDOW_HOURS}h customer service window ` +
+          "(Cloud API error 131047) — needs an approved template"];
+}
+
 /** Send one queued message using the owning tenant's credentials. */
 async function dispatch(item) {
   const p = JSON.parse(item.payload);
@@ -35,6 +70,22 @@ async function dispatch(item) {
   // everyone else shares the platform number.
   let pnid = p.phone_number_id || "";
   if (!pnid && tid) pnid = tenants.phoneNumberId(tenants.get(tid));
+
+  if (kind === "wa_template") {
+    return waapi.sendTemplate(p.to, p.template, p.params || [], pnid, p.language);
+  }
+
+  const [allowed, why] = whatsappGate(item, p);
+  if (!allowed) {
+    // A re-engagement template is the sanctioned way through a closed window.
+    if (why.includes("131047") && config.WA_REENGAGE_TEMPLATE) {
+      console.log(`window closed for queue ${item.id} — using the re-engagement template`);
+      return waapi.sendTemplate(
+        p.to, config.WA_REENGAGE_TEMPLATE,
+        [p.text || p.body || ""], pnid, config.WA_TEMPLATE_LANG);
+    }
+    return [false, `blocked: ${why}`];
+  }
 
   if (kind === "wa_text") return waapi.sendText(p.to, p.text, pnid);
   if (kind === "wa_buttons") {
@@ -82,8 +133,15 @@ export async function drainChannel(channel, batch = 10) {
       const attempts = item.attempts + 1;
       const isPermanentErr = String(err).includes("401") || String(err).includes("403");
       const isOneShot = item.kind === "ig_private_reply";
+      // Consent and the 24-hour window do not improve with retrying, and a
+      // retry loop against a closed window is exactly what runs up complaint
+      // rate on the number.
+      const isBlocked = String(err).startsWith("blocked:");
 
-      if (isOneShot || isPermanentErr) {
+      if (isBlocked) {
+        db.markQueue(item.id, "cancelled", err);
+        console.warn(`send suppressed ${item.kind} (queue ${item.id}): ${err}`);
+      } else if (isOneShot || isPermanentErr) {
         db.markQueue(item.id, "failed", err);
         console.warn(`send failed (permanent/one-shot failure) ${item.kind}: ${err}`);
       } else {
@@ -122,14 +180,28 @@ export function runRecovery() {
 }
 
 // ------------------------------------------------------------------- main loop
+// Housekeeping is cheap but pointless every 5 seconds; once an hour is plenty.
+let _lastPrune = 0;
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+
 /** One pass. Exposed separately so tests can run it deterministically. */
 export async function tick() {
   db.reclaimStale();
+
+  const nowMs = Date.now();
+  let pruned = 0;
+  if (nowMs - _lastPrune > PRUNE_INTERVAL_MS) {
+    _lastPrune = nowMs;
+    pruned = db.pruneProcessedEvents();
+    if (pruned) console.log(`pruned ${pruned} expired dedup rows`);
+  }
+
   return {
     instagram: await drainChannel("instagram"),
     whatsapp: await drainChannel("whatsapp"),
     recovery: runRecovery(),
     crm: await crm.drain(),
+    pruned,
   };
 }
 

@@ -106,6 +106,11 @@ CREATE TABLE IF NOT EXISTS leads (
     out_of_scope_streak INTEGER NOT NULL DEFAULT 0,
     source              TEXT NOT NULL DEFAULT 'instagram',
     recovery_sent       INTEGER NOT NULL DEFAULT 0,
+    -- The customer's last inbound WhatsApp message. Free-form sends are only
+    -- legal within 24h of it; past that the Cloud API needs a template.
+    last_inbound_at     TEXT,
+    -- Customer replied STOP. No further automated sends, ever.
+    opted_out           INTEGER NOT NULL DEFAULT 0,
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     clicked_at          TEXT,
@@ -169,6 +174,14 @@ CREATE TABLE IF NOT EXISTS processed_events (
     processed_at TEXT NOT NULL
 );
 
+-- Proof a deletion request was honoured, holding no identifier of its own.
+CREATE TABLE IF NOT EXISTS deletion_log (
+    code            TEXT PRIMARY KEY,
+    identifier_kind TEXT NOT NULL,      -- 'whatsapp number' | 'instagram user id' | ...
+    lead_count      INTEGER NOT NULL,
+    created_at      TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS agents (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER,
@@ -219,8 +232,40 @@ export function closeDb() {
   _openedPath = null;
 }
 
+/** Columns added after the first release, applied to existing databases.
+ *
+ * `CREATE TABLE IF NOT EXISTS` alone gives a fresh install the right shape but
+ * does nothing for a database that already exists, so every column added later
+ * needs a line here. Adding a column is the only migration SQLite does cheaply
+ * and the only kind this app has needed — keep it that way if you can.
+ */
+const MIGRATIONS = [
+  ["leads", "last_inbound_at", "TEXT"],
+  ["leads", "opted_out", "INTEGER NOT NULL DEFAULT 0"],
+];
+
+function tableColumns(table) {
+  return new Set(rows(`PRAGMA table_info(${table})`).map((r) => r.name));
+}
+
+/** Apply any missing columns. Safe to run on every boot. */
+export function migrate() {
+  const applied = [];
+  const byTable = new Map();
+  for (const [table, column, decl] of MIGRATIONS) {
+    if (!byTable.has(table)) byTable.set(table, tableColumns(table));
+    if (byTable.get(table).has(column)) continue;
+    run(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+    byTable.get(table).add(column);
+    applied.push(`${table}.${column}`);
+  }
+  if (applied.length) console.log(`migrated: added ${applied.join(", ")}`);
+  return applied;
+}
+
 export function initDb() {
   conn().exec(SCHEMA);
+  migrate();
 }
 
 /** node:sqlite rejects booleans and undefined; normalise the way Python did. */
@@ -263,15 +308,47 @@ export function transaction(fn) {
 }
 
 // ------------------------------------------------------------ deduplication
-/** True if this Meta event id was handled before. Records it if not. */
-export function alreadyProcessed(eventId) {
+/** Claim a Meta event id. True if this is the first sighting.
+ *
+ * The INSERT is the claim, so two overlapping retries cannot both win — but a
+ * claim that is never released and never completed would swallow the event, so
+ * every caller must `releaseEvent()` if it bails out with work left undone.
+ */
+export function claimEvent(eventId) {
+  if (!eventId) return true;
+  const res = run(
+    "INSERT OR IGNORE INTO processed_events (event_id, processed_at) VALUES (?, ?)",
+    [eventId, now()],
+  );
+  return res.changes === 1;
+}
+
+/** Give a claimed event id back, so Meta's retry gets another attempt.
+ *
+ * Call this when handling failed *before* the outbound work was queued.
+ * Once a queue row exists the send is durable and the event must stay claimed.
+ */
+export function releaseEvent(eventId) {
+  if (!eventId) return;
+  run("DELETE FROM processed_events WHERE event_id = ?", [eventId]);
+}
+
+/** True if this id has been seen, without claiming it. */
+export function wasProcessed(eventId) {
   if (!eventId) return false;
-  if (row("SELECT 1 AS x FROM processed_events WHERE event_id = ?", [eventId])) {
-    return true;
-  }
-  run("INSERT INTO processed_events (event_id, processed_at) VALUES (?, ?)",
-      [eventId, now()]);
-  return false;
+  return Boolean(row("SELECT 1 AS x FROM processed_events WHERE event_id = ?", [eventId]));
+}
+
+/** Deprecated: use claimEvent(), whose name says which way the boolean runs. */
+export function alreadyProcessed(eventId) {
+  return !claimEvent(eventId);
+}
+
+/** Drop dedup rows Meta can no longer be retrying. Returns rows removed. */
+export function pruneProcessedEvents(days = config.PROCESSED_EVENT_RETENTION_DAYS) {
+  const res = run("DELETE FROM processed_events WHERE processed_at < ?",
+                  [minutesAgo(days * 24 * 60)]);
+  return res.changes;
 }
 
 // ----------------------------------------------------------------- ref codes
@@ -330,25 +407,63 @@ export function allCampaigns(tenantId = null) {
   );
 }
 
+const keywordHit = (campaign, text) =>
+  String(campaign.keywords || "")
+    .split(",")
+    .map((k) => k.trim().toLowerCase())
+    .some((k) => k && text.includes(k));
+
+/** The campaign a comment belongs to, or null.
+ *
+ * A registered reel is matched on its own keywords. An UNregistered reel — a
+ * new upload the operator has not added yet — borrows the copy of whichever of
+ * this tenant's campaigns the keyword matches, and a campaign row is created
+ * for the real media id so it shows up in the portal.
+ *
+ * That row matters: the earlier version returned the borrowed campaign as-is,
+ * so the lead inherited another reel's media_id and variant, and every per-reel
+ * funnel and A/B number silently counted the comment against the wrong reel.
+ */
 export function matchCampaign(mediaId, commentText, tenantId = null) {
-  let camp = getCampaign(mediaId);
   const text = String(commentText || "").toLowerCase();
-  if (camp && camp.active) {
-    for (const kw of String(camp.keywords || "").split(",")) {
-      const trimmed = kw.trim().toLowerCase();
-      if (trimmed && text.includes(trimmed)) return camp;
-    }
+
+  const own = getCampaign(mediaId);
+  if (own) {
+    // A known reel decides for itself. It must never borrow another reel's
+    // keywords, or turning a campaign off would not turn it off.
+    if (own.active && keywordHit(own, text)) return own;
+    return null;
   }
-  if (tenantId) {
-    const tenantCamps = rows("SELECT * FROM campaigns WHERE tenant_id = ? AND active = 1 ORDER BY created_at DESC", [tenantId]);
-    for (const c of tenantCamps) {
-      for (const kw of String(c.keywords || "").split(",")) {
-        const trimmed = kw.trim().toLowerCase();
-        if (trimmed && text.includes(trimmed)) return c;
-      }
-    }
-  }
-  return null;
+
+  if (!tenantId || !mediaId) return null;
+
+  const candidates = rows(
+    "SELECT * FROM campaigns WHERE tenant_id = ? AND active = 1 ORDER BY created_at DESC",
+    [tenantId],
+  );
+  const borrowed = candidates.find((c) => keywordHit(c, text));
+  if (!borrowed) return null;
+
+  console.log(
+    `reel ${mediaId} is not registered — cloning "${borrowed.name}" so it is ` +
+    "tracked separately. Rename it in the portal's Campaigns tab.",
+  );
+  upsertCampaign({
+    media_id: mediaId,
+    tenant_id: tenantId,
+    name: `${borrowed.name} (auto)`,
+    keywords: borrowed.keywords,
+    property_ref: borrowed.property_ref,
+    dm_strategy: borrowed.dm_strategy,
+    dm_step1: borrowed.dm_step1,
+    dm_step2: borrowed.dm_step2,
+    dm_one_step: borrowed.dm_one_step,
+    public_reply: borrowed.public_reply,
+    wa_prefill: borrowed.wa_prefill,
+    variant: borrowed.variant,
+    active: 1,
+  });
+  return getCampaign(mediaId);
 }
 
 // -------------------------------------------------------------------- leads
@@ -394,8 +509,20 @@ export function leadByComment(commentId) {
   return row("SELECT * FROM leads WHERE comment_id = ?", [commentId]);
 }
 
-/** Most recent lead for this Instagram user — used to route DM replies. */
-export function leadByIgUser(igUserId) {
+/** Most recent lead for this Instagram user — used to route DM replies.
+ *
+ * Pass the tenant. Without it, a viewer who commented on two different
+ * clients' reels resolves to whichever lead is newest, and the older client's
+ * step-2 DM is dropped on the floor as "no matching lead".
+ */
+export function leadByIgUser(igUserId, tenantId = null) {
+  if (!igUserId) return null;
+  if (tenantId !== null && tenantId !== undefined) {
+    return row(
+      "SELECT * FROM leads WHERE ig_user_id = ? AND tenant_id = ? ORDER BY id DESC LIMIT 1",
+      [igUserId, tenantId],
+    );
+  }
   return row("SELECT * FROM leads WHERE ig_user_id = ? ORDER BY id DESC LIMIT 1",
              [igUserId]);
 }
@@ -406,7 +533,8 @@ export function leadByIgUser(igUserId) {
  * An influencer must never see another influencer's leads.
  */
 export function allLeads({ stage = null, band = null, mediaId = null,
-                           tenantId = null, limit = 200 } = {}) {
+                           tenantId = null, search = null,
+                           limit = 200, offset = 0 } = {}) {
   const sql = [
     "SELECT l.*, c.name AS campaign_name, t.name AS tenant_name,",
     "       t.slug AS tenant_slug,",
@@ -426,8 +554,14 @@ export function allLeads({ stage = null, band = null, mediaId = null,
   if (stage) { sql.push("AND l.stage = ?"); params.push(stage); }
   if (band) { sql.push("AND l.band = ?"); params.push(band); }
   if (mediaId) { sql.push("AND l.media_id = ?"); params.push(mediaId); }
-  sql.push("ORDER BY l.score DESC, l.updated_at DESC LIMIT ?");
-  params.push(limit);
+  if (search) {
+    sql.push("AND (l.name LIKE ? OR l.wa_id LIKE ? OR l.ig_username LIKE ? " +
+             "OR l.ref_code LIKE ?)");
+    const like = `%${String(search).trim()}%`;
+    params.push(like, like, like, like.toUpperCase());
+  }
+  sql.push("ORDER BY l.score DESC, l.updated_at DESC LIMIT ? OFFSET ?");
+  params.push(limit, offset);
   return rows(sql.join(" "), params);
 }
 
@@ -435,9 +569,99 @@ export function allLeads({ stage = null, band = null, mediaId = null,
 export function leadsNeedingRecovery() {
   return rows(
     "SELECT * FROM leads WHERE stage = 'CLICKED' AND recovery_sent = 0 " +
+      "AND opted_out = 0 " +
       "AND ig_user_id IS NOT NULL AND clicked_at IS NOT NULL AND clicked_at <= ?",
     [minutesAgo(config.RECOVERY_DELAY_MINUTES)],
   );
+}
+
+// -------------------------------------------------- whatsapp 24-hour window
+/** Record the customer's inbound message — this is what opens the window. */
+export function markInbound(leadId) {
+  run("UPDATE leads SET last_inbound_at = ?, updated_at = ? WHERE id = ?",
+      [now(), now(), leadId]);
+}
+
+/** True if a free-form WhatsApp message to this lead is still allowed.
+ *
+ * A lead with no recorded inbound message has no window at all — that is the
+ * correct answer for one created from a comment or a desktop callback, which
+ * have never messaged us.
+ */
+export function isWindowOpen(lead, hours = config.WA_WINDOW_HOURS) {
+  const last = lead && (lead.last_inbound_at || lead.wa_started_at);
+  if (!last) return false;
+  return last >= minutesAgo(hours * 60);
+}
+
+// -------------------------------------------------------------------- opt-out
+/** Suppress every future automated send to this person, across their leads. */
+export function optOut(waId) {
+  if (!waId) return 0;
+  const res = run(
+    "UPDATE leads SET opted_out = 1, bot_paused = 1, flow_active = 0, updated_at = ? " +
+      "WHERE wa_id = ?", [now(), waId]);
+  // Anything already queued for them must not go out either.
+  run("UPDATE outbound_queue SET status = 'cancelled', last_error = 'recipient opted out' " +
+      "WHERE status = 'pending' AND lead_id IN (SELECT id FROM leads WHERE wa_id = ?)",
+      [waId]);
+  return res.changes;
+}
+
+export function optIn(waId) {
+  if (!waId) return 0;
+  const res = run(
+    "UPDATE leads SET opted_out = 0, bot_paused = 0, updated_at = ? WHERE wa_id = ?",
+    [now(), waId]);
+  return res.changes;
+}
+
+export function isOptedOut(waId) {
+  if (!waId) return false;
+  return Boolean(row(
+    "SELECT 1 AS x FROM leads WHERE wa_id = ? AND opted_out = 1 LIMIT 1", [waId]));
+}
+
+// ------------------------------------------------------------------- deletion
+/** Erase a lead and everything hanging off it. Returns what was removed.
+ *
+ * The privacy policy promises this; it needs to actually happen, including the
+ * message bodies and the queued sends, not just the leads row.
+ */
+export function purgeLead(leadId) {
+  return transaction(() => {
+    const counts = {};
+    for (const [table, column] of [
+      ["lead_answers", "lead_id"], ["lead_events", "lead_id"],
+      ["messages", "lead_id"], ["outbound_queue", "lead_id"],
+      ["crm_outbox", "lead_id"],
+    ]) {
+      counts[table] = run(`DELETE FROM ${table} WHERE ${column} = ?`, [leadId]).changes;
+    }
+    counts.leads = run("DELETE FROM leads WHERE id = ?", [leadId]).changes;
+    return counts;
+  });
+}
+
+/** Every lead belonging to one person, by any identifier we hold. */
+export function leadsForSubject({ waId = null, igUserId = null, igUsername = null } = {}) {
+  const clauses = [];
+  const params = [];
+  if (waId) { clauses.push("wa_id = ?"); params.push(String(waId).replace(/\D/g, "")); }
+  if (igUserId) { clauses.push("ig_user_id = ?"); params.push(igUserId); }
+  if (igUsername) {
+    clauses.push("LOWER(ig_username) = ?");
+    params.push(String(igUsername).replace(/^@/, "").toLowerCase());
+  }
+  if (!clauses.length) return [];
+  return rows(`SELECT * FROM leads WHERE ${clauses.join(" OR ")}`, params);
+}
+
+/** Erase everyone matching an identifier. Returns the lead ids removed. */
+export function purgeSubject(identifiers) {
+  const found = leadsForSubject(identifiers);
+  for (const lead of found) purgeLead(lead.id);
+  return found.map((l) => l.id);
 }
 
 // ------------------------------------------------------------------- events
@@ -612,6 +836,60 @@ export function retryQueue(itemId, error, delayMinutes) {
       "scheduled_at = ? WHERE id = ?",
     [attempts, status, String(error).slice(0, 400), inMinutes(delayMinutes), itemId],
   );
+}
+
+/** Sends that gave up, newest first — scoped to one tenant where known.
+ *
+ * Without this a client's Instagram token can expire and every DM silently
+ * lands in `status='failed'`, which nothing in the portal ever showed.
+ */
+export function failedSends({ tenantId = null, limit = 20 } = {}) {
+  const params = [];
+  // Both dead states, matching failureCounts(). 'cancelled' is a suppressed
+  // send — opted out, or a closed 24h window — and the operator needs to see
+  // those just as much as a hard failure.
+  let where = "q.status IN ('failed', 'cancelled')";
+  if (tenantId !== null && tenantId !== undefined) {
+    where += " AND l.tenant_id = ?";
+    params.push(tenantId);
+  }
+  params.push(limit);
+  return rows(
+    "SELECT q.id, q.channel, q.kind, q.status, q.attempts, q.last_error, " +
+      "       q.created_at, q.lead_id, l.tenant_id, l.ref_code, t.name AS tenant_name " +
+      "  FROM outbound_queue q " +
+      "  LEFT JOIN leads   l ON l.id = q.lead_id " +
+      "  LEFT JOIN tenants t ON t.id = l.tenant_id " +
+      ` WHERE ${where} ORDER BY q.id DESC LIMIT ?`,
+    params,
+  );
+}
+
+/** How many sends are currently in a dead state, by channel. */
+export function failureCounts(tenantId = null) {
+  const params = [];
+  let where = "q.status IN ('failed', 'cancelled')";
+  if (tenantId !== null && tenantId !== undefined) {
+    where += " AND l.tenant_id = ?";
+    params.push(tenantId);
+  }
+  const out = {};
+  for (const r of rows(
+    "SELECT q.channel, q.status, COUNT(*) AS n FROM outbound_queue q " +
+      "LEFT JOIN leads l ON l.id = q.lead_id " +
+      `WHERE ${where} GROUP BY q.channel, q.status`, params)) {
+    (out[r.channel] ||= {})[r.status] = r.n;
+  }
+  return out;
+}
+
+/** Put a failed row back in the queue for one more attempt. */
+export function requeueFailed(itemId) {
+  const res = run(
+    "UPDATE outbound_queue SET status = 'pending', attempts = 0, last_error = NULL, " +
+      "scheduled_at = ? WHERE id = ? AND status IN ('failed', 'cancelled')",
+    [now(), itemId]);
+  return res.changes === 1;
 }
 
 export function queueStats() {

@@ -113,18 +113,52 @@ export function checkLogin(username, password) {
 }
 
 // --------------------------------------------------------------- resolution
+/** The sole active tenant, but only in single-tenant mode.
+ *
+ * This is the one place a fallback is allowed to guess, and it must stay one
+ * place. Guessing is safe when there is exactly one client and provably wrong
+ * the moment there are two — so it is gated on the operator saying so AND on
+ * there actually being one active tenant.
+ */
+function soleTenantFallback(why) {
+  if (!config.SINGLE_TENANT_MODE) return null;
+  const active = allTenants(true);
+  if (active.length !== 1) {
+    console.warn(
+      `SINGLE_TENANT_MODE is on but ${active.length} tenants are active — ` +
+      `refusing to guess which one ${why}. Turn the flag off and map each ` +
+      "client's Instagram account id in the portal.",
+    );
+    return null;
+  }
+  return active[0];
+}
+
+/** Which client owns the Instagram account this event arrived on.
+ *
+ * Returns null when nothing maps, and null must mean "drop it". The previous
+ * version fell through to `allTenants(true)[0]`, so a comment on an account we
+ * do not own created a lead on whichever client sorts first by name and DMed
+ * the commenter using that client's token.
+ */
 export function byInstagram(igUserId) {
   if (igUserId) {
-    const match = db.row("SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [igUserId]);
+    const match = db.row(
+      "SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [igUserId]);
     if (match) return match;
   }
-  if (config.IG_USER_ID) {
-    const matchEnv = db.row("SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [config.IG_USER_ID]);
+
+  // A deployment with one global Instagram account in the environment: the
+  // account in IG_USER_ID belongs to whichever tenant carries that same id.
+  // Only consult this when the event itself named that account, or named
+  // nothing at all — never to override a different account's id.
+  if (config.IG_USER_ID && (!igUserId || igUserId === config.IG_USER_ID)) {
+    const matchEnv = db.row(
+      "SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [config.IG_USER_ID]);
     if (matchEnv) return matchEnv;
   }
-  const allActive = allTenants(true);
-  if (allActive.length >= 1) return allActive[0];
-  return null;
+
+  return soleTenantFallback(`owns Instagram account ${igUserId || "(unnamed)"}`);
 }
 
 /** Only matches tenants on a dedicated WhatsApp number. */
@@ -142,34 +176,29 @@ export function byPhoneNumberId(phoneNumberId) {
  * ref code.
  */
 export function resolveForWhatsapp(refCode = "", waId = "", phoneNumberId = "", text = "") {
+  // 1. The ref code. Minted for exactly one lead, so it is proof.
   if (refCode) {
     const lead = db.leadByRef(refCode);
     if (lead && lead.tenant_id) return get(lead.tenant_id);
   }
 
+  // 2. A dedicated number identifies its owner outright.
   const t = byPhoneNumberId(phoneNumberId);
   if (t) return t;
 
-  const lowered = String(text || "").toLowerCase();
-  if (lowered) {
-    for (const tenant of allTenants(true)) {
-      const name = (tenant.name || "").toLowerCase();
-      const firstName = name.split(" ")[0];
-
-      if (name && lowered.includes(name)) return tenant;
-      if (tenant.slug && lowered.includes(tenant.slug.toLowerCase())) return tenant;
-      if (firstName && firstName.length >= 3 && lowered.includes(firstName)) return tenant;
-    }
-  }
-
+  // 3. An existing conversation with this person, for someone returning days
+  //    later without a ref code.
   if (waId) {
     const lead = db.leadByWa(waId);
     if (lead && lead.tenant_id) return get(lead.tenant_id);
   }
 
-  const all = allTenants(true);
-  if (all.length > 0) return all[0];
-  return null;
+  // There used to be a step here that searched the customer's message text for
+  // any tenant's name, slug, or three-letter first name. It has been removed:
+  // "hi priya" from a stranger on the shared number handed that lead to the gym,
+  // and any client whose first name appears in ordinary words collected leads
+  // belonging to everyone else.
+  return soleTenantFallback("this WhatsApp message belongs to");
 }
 
 /** The number customers message for this tenant. */
@@ -376,8 +405,28 @@ export function applyTemplate(tenantId, vertical) {
   return true;
 }
 
+/** Seed three demo clients on an empty database.
+ *
+ * Gated on not-production. This runs on every boot with an empty `tenants`
+ * table, so on a host with no persistent disk — where the database is recreated
+ * after each deploy — it was creating three logins with the password `demo123`
+ * on a public URL, over and over. Set SEED_DEMO_TENANTS=true if you deliberately
+ * want the demo data in a production-like environment.
+ */
 export function ensureDefaultTenants() {
   if (allTenants().length > 0) return;
+
+  const isProduction = process.env.NODE_ENV === "production";
+  const forced = ["1", "true", "yes", "on"].includes(
+    String(process.env.SEED_DEMO_TENANTS || "").toLowerCase());
+  if (isProduction && !forced) {
+    console.log(
+      "no tenants yet — skipping demo seed in production. Create your first " +
+      "client in the portal, or set SEED_DEMO_TENANTS=true to seed the demo data.",
+    );
+    return;
+  }
+
   const CLIENTS = [
     {
       name: "Priya Fitness", vertical: "gym", portal_user: "priya",
@@ -440,7 +489,10 @@ export function ensureDefaultTenants() {
       db.saveMessage(lid, "whatsapp", "assistant", "Welcome to Tandoor House! Table booking confirmed. 🍽️");
     }
   }
-  db.run("UPDATE tenants SET ig_token = NULL");
+  console.log(
+    `seeded ${CLIENTS.length} demo clients with the password 'demo123' — ` +
+    "delete them before this deployment sees real leads.",
+  );
 }
 
 export default {

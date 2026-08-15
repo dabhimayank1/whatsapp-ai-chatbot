@@ -7,7 +7,7 @@
  * Deletes and recreates the database. Never run this against production data.
  *
  * Logins created:
- *     admin  / (your ADMIN_PASSWORD, default 'admin')   sees everything
+ *     admin  / your ADMIN_PASSWORD — no default, so set one in .env first
  *     priya  / demo123                                  gym only
  *     skyline/ demo123                                  real estate only
  *     tandoor/ demo123                                  restaurant only
@@ -211,7 +211,12 @@ for (const t of tenants.allTenants()) {
   );
 }
 
-console.log(`\n  Logins   admin / ${config.ADMIN_PASSWORD}   (all clients)`);
+const adminHint = config.ADMIN_PASSWORD_HASH
+  ? "(your ADMIN_PASSWORD_HASH)"
+  : config.ADMIN_PASSWORD
+    ? config.ADMIN_PASSWORD
+    : "DISABLED — set ADMIN_PASSWORD_HASH or ADMIN_PASSWORD in .env";
+console.log(`\n  Logins   admin / ${adminHint}   (all clients)`);
 for (const spec of CLIENTS) {
   console.log(`           ${spec.portal_user} / demo123`.padEnd(38) +
               `(${spec.name} only)`);

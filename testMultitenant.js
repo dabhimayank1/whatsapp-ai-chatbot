@@ -296,5 +296,10 @@ check("over-10-option sets are rejected",
         { key: "x", question: "?",
           options: Array.from({ length: 11 }, (_, i) => [String(i), String(i)]) }] } })).status === 400);
 
+// Shut down in order, then let the event loop drain on its own. Calling
+// process.exit() here instead aborts on Windows with a libuv assertion —
+// the SQLite handle is still closing — which fails `npm test` at 45/45.
 client.close();
-process.exit(finish());
+worker.stop();
+db.closeDb();
+process.exitCode = finish();

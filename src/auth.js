@@ -11,8 +11,24 @@
  * Every data route must run its query through it.
  */
 
+import crypto from "node:crypto";
+
 import config from "./config.js";
+import { checkPasswordHash } from "./passwords.js";
+import { rateLimiter } from "./security.js";
 import * as tenants from "./tenants.js";
+
+/** Throttle password guessing.
+ *
+ * Keyed on IP *and* username so one attacker cannot lock out a real user by
+ * hammering their name, and one IP cannot walk a dictionary across accounts.
+ */
+export const loginLimiter = rateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  name: "login",
+  keyOf: (req) => `${req.ip}|${String((req.body || {}).username || "").toLowerCase()}`,
+});
 
 export function loginTenant(req, tenant) {
   req.session = { role: "tenant", tenant_id: tenant.id, name: tenant.name };
@@ -88,9 +104,33 @@ export function ownsTenant(req, tenantId) {
   );
 }
 
+/** Compare two secrets without leaking their length difference by timing. */
+function secretsMatch(a, b) {
+  const bufA = Buffer.from(String(a ?? ""), "utf-8");
+  const bufB = Buffer.from(String(b ?? ""), "utf-8");
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/** Check the platform operator's password.
+ *
+ * ADMIN_PASSWORD_HASH is preferred — the plaintext form means the password sits
+ * in the hosting dashboard's environment view and in any process listing. If
+ * neither is configured the admin login is *disabled*: it used to default to
+ * "admin", so a deployment that forgot the variable accepted admin/admin.
+ */
+function checkAdminPassword(password) {
+  if (!password) return false;
+  if (config.ADMIN_PASSWORD_HASH) {
+    return checkPasswordHash(config.ADMIN_PASSWORD_HASH, password);
+  }
+  if (!config.ADMIN_PASSWORD) return false;
+  return secretsMatch(password, config.ADMIN_PASSWORD);
+}
+
 /** Returns 'admin', 'tenant' or null. */
 export function authenticate(req, username, password) {
-  if (username === config.ADMIN_USER && password === config.ADMIN_PASSWORD && password) {
+  if (secretsMatch(username, config.ADMIN_USER) && checkAdminPassword(password)) {
     loginAdmin(req);
     return "admin";
   }
