@@ -151,6 +151,7 @@ async function onMessage(msg, contacts, phoneNumberId = "") {
     const reply = inter.button_reply || inter.list_reply || {};
     console.log(`tap <- ${shortId(waId)}: ${reply.id}`);
     flows.handleInteractiveReply(lead, reply.id || "", reply.title || "");
+    await worker.tick();
     return;
   }
 
@@ -159,9 +160,11 @@ async function onMessage(msg, contacts, phoneNumberId = "") {
                { to: waId, text: NON_TEXT_REPLY, phone_number_id: phoneNumberId },
                lead.id);
     db.saveMessage(lead.id, "whatsapp", "assistant", NON_TEXT_REPLY);
+    await worker.tick();
     return;
   }
 
   console.log(`in  <- ${shortId(waId)} (tenant ${tenantId}), ${text.length} chars`);
   await flows.handleText(lead, text);
+  await worker.tick();
 }

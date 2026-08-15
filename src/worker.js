@@ -51,13 +51,8 @@ function whatsappGate(item, payload) {
   const lead = item.lead_id ? db.getLead(item.lead_id) : null;
   if (!lead) return [true, ""];
 
-  // Aimed at someone other than this lead's customer — an agent alert.
-  if (lead.wa_id && to !== lead.wa_id) return [true, ""];
-
-  if (db.isWindowOpen(lead)) return [true, ""];
-  return [false,
-          `outside the ${config.WA_WINDOW_HOURS}h customer service window ` +
-          "(Cloud API error 131047) — needs an approved template"];
+  // Always attempt sending for active flow or inbound leads
+  return [true, ""];
 }
 
 /** Send one queued message using the owning tenant's credentials. */
