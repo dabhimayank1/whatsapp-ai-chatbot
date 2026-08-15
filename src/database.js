@@ -10,6 +10,8 @@
  */
 
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import config from "./config.js";
@@ -219,6 +221,10 @@ let _openedPath = null;
 export function conn() {
   if (_db && _openedPath === config.DB_PATH) return _db;
   if (_db) _db.close();
+  const dir = path.dirname(config.DB_PATH);
+  if (dir && dir !== "." && !fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   _db = new DatabaseSync(config.DB_PATH);
   _db.exec("PRAGMA journal_mode=WAL");
   _db.exec("PRAGMA foreign_keys=ON");
