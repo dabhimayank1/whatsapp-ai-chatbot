@@ -93,9 +93,14 @@ export function handleInteractiveReply(lead, optionId, title) {
   const leadId = lead.id;
   db.saveMessage(leadId, "whatsapp", "user", title);
 
-  if (!lead.flow_active || !lead.tenant_id) {
-    console.log(`tap outside an active flow for lead ${leadId}`);
+  if (!lead.tenant_id) {
+    console.log(`tap outside a tenant for lead ${leadId}`);
     return;
+  }
+
+  if (!lead.flow_active) {
+    db.updateLead(leadId, { flow_active: 1 });
+    lead = db.getLead(leadId);
   }
 
   const steps = tenants.questions(lead.tenant_id);
