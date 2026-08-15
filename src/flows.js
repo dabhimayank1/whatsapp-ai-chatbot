@@ -175,6 +175,13 @@ export async function handleText(lead, text) {
   const label = ownRef ? "IN" : await aiEngine.classify(text, tenant);
 
   if (label === "OUT") {
+    if (lead.flow_active && lead.tenant_id) {
+      const steps = tenants.questions(lead.tenant_id);
+      if (lead.flow_step < steps.length) {
+        sendStep(lead, steps, lead.flow_step);
+        return;
+      }
+    }
     const streak = (lead.out_of_scope_streak || 0) + 1;
     db.updateLead(leadId, { out_of_scope_streak: streak });
     if (streak >= config.ESCALATE_AFTER_OUT_OF_SCOPE) {
