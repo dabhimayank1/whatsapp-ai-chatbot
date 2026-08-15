@@ -5,10 +5,10 @@
   "type": "module",
   "main": "src/app.js",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.11.0"
   },
   "scripts": {
-    "start": "node src/app.js",
+    "start": "node --experimental-sqlite src/app.js",
     "seed": "node seedDemo.js",
     "test": "node testFunnel.js && node testMultitenant.js && node testSecurity.js",
     "test:funnel": "node testFunnel.js",
