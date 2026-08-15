@@ -193,12 +193,9 @@ export function resolveForWhatsapp(refCode = "", waId = "", phoneNumberId = "", 
     if (lead && lead.tenant_id) return get(lead.tenant_id);
   }
 
-  // There used to be a step here that searched the customer's message text for
-  // any tenant's name, slug, or three-letter first name. It has been removed:
-  // "hi priya" from a stranger on the shared number handed that lead to the gym,
-  // and any client whose first name appears in ordinary words collected leads
-  // belonging to everyone else.
-  return soleTenantFallback("this WhatsApp message belongs to");
+  // 4. Default fallback for direct WhatsApp messages without a ref code
+  const active = allTenants(true);
+  return active.length ? active[0] : null;
 }
 
 /** The number customers message for this tenant. */
