@@ -59,6 +59,58 @@ function say(lead, text) {
   db.saveMessage(lead.id, "whatsapp", "assistant", text);
 }
 
+/** Match typed text against one question's options, or return null.
+ *
+ * Deliberately strict, because a wrong match is worse than no match: it records
+ * an answer the customer never gave, scores it, and moves the flow on, all
+ * invisibly. Falling through to the AI instead just costs one model call.
+ *
+ * Substring containment was the original approach and it misfired badly — with
+ * options yes/maybe/no, `"i don't know"` matched "no" (inside "k-no-w") and
+ * `"not now"` matched it twice over, so anyone expressing hesitation was
+ * recorded as a firm no. Whole words only, and anything ambiguous is refused.
+ */
+export function matchOption(step, text) {
+  const lowered = String(text || "").toLowerCase().trim();
+  if (!lowered) return null;
+  const options = step.options || [];
+
+  // 1. The whole message IS an option id or its title. Unambiguous.
+  const exact = options.find(
+    ([id, title]) =>
+      String(id).toLowerCase() === lowered ||
+      String(title).toLowerCase() === lowered,
+  );
+  if (exact) return exact;
+
+  // 2. Otherwise the option must appear as whole words. "3 BHK" has to match
+  //    the title "3 BHK", so compare word sequences rather than single tokens.
+  const words = lowered.split(/\W+/).filter(Boolean);
+  const haystack = ` ${words.join(" ")} `;
+  const asWords = (value) =>
+    ` ${String(value).toLowerCase().split(/\W+/).filter(Boolean).join(" ")} `;
+
+  const hits = options.filter(([id, title]) => {
+    const idWords = asWords(id);
+    const titleWords = asWords(title);
+    return (idWords.trim() && haystack.includes(idWords)) ||
+           (titleWords.trim() && haystack.includes(titleWords));
+  });
+
+  // 3. Exactly one option, or we do not guess. "should i buy or rent?" names
+  //    two and is a question, not an answer.
+  if (hits.length !== 1) {
+    if (hits.length > 1) {
+      console.log(
+        `text reply matched ${hits.length} options (${hits.map((h) => h[0]).join(", ")}) ` +
+        "— too ambiguous to answer for them, sending to the model instead",
+      );
+    }
+    return null;
+  }
+  return hits[0];
+}
+
 export function startFlow(lead) {
   const tenant = tenantOf(lead);
   const steps = lead.tenant_id ? tenants.questions(lead.tenant_id) : [];
@@ -146,19 +198,13 @@ export async function handleText(lead, text) {
     return;
   }
 
-  // If user typed text that matches an option of the active qualification step, process it as an answer!
+  // Typing the answer should work as well as tapping it — plenty of people
+  // reply "3 BHK" instead of using the button.
   if (lead.flow_active && lead.tenant_id) {
     const steps = tenants.questions(lead.tenant_id);
     const index = lead.flow_step;
     if (index < steps.length) {
-      const step = steps[index];
-      const match = step.options.find(
-        ([id, title]) =>
-          id.toLowerCase() === lowered ||
-          title.toLowerCase() === lowered ||
-          lowered.includes(id.toLowerCase()) ||
-          lowered.includes(title.toLowerCase()),
-      );
+      const match = matchOption(steps[index], text);
       if (match) {
         console.log(`text reply matched step ${index} option: ${match[0]} (${match[1]})`);
         handleInteractiveReply(lead, match[0], match[1]);
@@ -175,21 +221,32 @@ export async function handleText(lead, text) {
   const label = ownRef ? "IN" : await aiEngine.classify(text, tenant);
 
   if (label === "OUT") {
-    if (lead.flow_active && lead.tenant_id) {
-      const steps = tenants.questions(lead.tenant_id);
-      if (lead.flow_step < steps.length) {
-        sendStep(lead, steps, lead.flow_step);
-        return;
-      }
-    }
+    // The refusal and the streak come FIRST, whether or not a flow is running.
+    // Skipping them mid-flow disabled the domain lock for most of every
+    // conversation: the bot answered nothing, said nothing about being unable
+    // to help, and — because the streak never advanced — could never escalate
+    // to a human, so a stuck customer just got the same buttons forever.
     const streak = (lead.out_of_scope_streak || 0) + 1;
     db.updateLead(leadId, { out_of_scope_streak: streak });
+
     if (streak >= config.ESCALATE_AFTER_OUT_OF_SCOPE) {
       say(lead, config.ESCALATION_MESSAGE);
       leads.handOff(leadId, "repeated off-topic messages");
       return;
     }
+
     say(lead, tenants.outOfScopeMessage(tenant));
+
+    // Then put the flow back in front of them, so an off-topic detour does not
+    // leave the qualification stranded with no visible next step.
+    if (lead.flow_active && lead.tenant_id) {
+      const steps = tenants.questions(lead.tenant_id);
+      if (lead.flow_step < steps.length) {
+        const fresh = db.getLead(leadId);
+        fresh._phone_number_id = lead._phone_number_id;
+        sendStep(fresh, steps, lead.flow_step);
+      }
+    }
     return;
   }
 

@@ -328,9 +328,16 @@ await worker.drainChannel("whatsapp", 10);
 check("nothing further is sent to them",
       !SENT.wa.slice(beforeOptOut).some(([, , t]) => t === "should never send"));
 
+// Scoped to what is sent AFTER this point. Scanning the whole history was
+// wrong: the webhook handlers now tick the worker inline, so the reply to this
+// contact's very first message (before they opted out) has legitimately been
+// delivered and would match forever.
+const beforeLaterMessage = SENT.wa.length;
 await webhooksWa.process_(waText("OO_3", "do you have 3bhk?", "919600000001", "PN_SKYLINE"));
+await worker.drainChannel("whatsapp", 10);
 check("a later message gets no automated reply",
-      !SENT.wa.some(([, to, t]) => to === "919600000001" && t.includes("details")));
+      !SENT.wa.slice(beforeLaterMessage).some(([, to]) => to === "919600000001"),
+      JSON.stringify(SENT.wa.slice(beforeLaterMessage).map((x) => x[2]?.slice(0, 30))));
 check("...but is still recorded for the agent",
       db.leadEvents(ooLead.id).some((e) => e.type === "INBOUND_WHILE_OPTED_OUT"));
 
@@ -459,6 +466,77 @@ const health = await (await client.get("/health")).json();
 check("health responds ok", health.status === "ok");
 check("queue detail is no longer public", !("queue" in health), JSON.stringify(health));
 check("signature state is reported", health.webhook_signature === "enforced");
+
+section("15 · Free-text answers match on whole words only");
+// Substring matching recorded answers the customer never gave: with options
+// yes/maybe/no, "i don't know" matched "no" inside "k-no-w".
+const flows = await import("./src/flows.js");
+const yesNo = { options: [["yes", "Yes please"], ["maybe", "Maybe later"], ["no", "Not yet"]] };
+const buyRent = { options: [["buy", "Buy"], ["rent", "Rent"], ["invest", "Invest"]] };
+const bhk = { options: [["1bhk", "1 BHK"], ["3bhk", "3 BHK"], ["plot", "Plot / Land"]] };
+
+const m = (step, t) => flows.matchOption(step, t)?.[0] ?? null;
+check("an exact option id matches", m(yesNo, "yes") === "yes");
+check("an exact option title matches", m(yesNo, "Yes please") === "yes");
+check("case and padding are ignored", m(yesNo, "  MAYBE  ") === "maybe");
+check("'i don't know' is NOT read as 'no'", m(yesNo, "i don't know") === null,
+      String(m(yesNo, "i don't know")));
+check("'not now' is NOT read as 'no'", m(yesNo, "not now") === null,
+      String(m(yesNo, "not now")));
+check("'nothing yet' is NOT read as 'no'", m(yesNo, "nothing yet") === null);
+check("a whole-word answer in a sentence still matches",
+      m(buyRent, "i want to buy") === "buy");
+check("an ambiguous message naming two options is refused",
+      m(buyRent, "should i buy or rent?") === null,
+      String(m(buyRent, "should i buy or rent?")));
+check("a multi-word title matches", m(bhk, "3 BHK please") === "3bhk");
+check("a title with punctuation matches", m(bhk, "plot / land") === "plot");
+check("unrelated text matches nothing", m(bhk, "what are your timings?") === null);
+check("empty text matches nothing", m(yesNo, "") === null);
+
+section("16 · The worker never runs two passes at once");
+// The webhook handlers call tick() inline for instant replies. Overlapping
+// passes double-push the CRM outbox, double-send recovery nudges, and each
+// grant themselves a full hourly budget.
+const inFlight = worker.tick();          // not awaited: still running
+const reentrant = await worker.tick();   // must be refused
+check("a re-entrant tick is skipped", reentrant?.skipped === true,
+      JSON.stringify(reentrant));
+const firstResult = await inFlight;
+check("the pass already running still completes", firstResult?.skipped !== true,
+      JSON.stringify(Object.keys(firstResult || {})));
+const afterwards = await worker.tick();
+check("ticks work again once the pass finishes", afterwards?.skipped !== true);
+
+section("17 · Meta's response data is recorded against the lead");
+// A 200 from Meta means ACCEPTED, not delivered — the real outcome arrives
+// later as a `statuses` webhook keyed on the wamid. Capturing that id is what
+// makes an accepted-then-undelivered message traceable at all.
+const traceLead = db.createLead({ tenant_id: gym, wa_id: "919400000001",
+                                  stage: "WA_ENGAGED", source: "instagram" });
+db.markInbound(traceLead);
+
+waapi.sendText = (to, t, p = "") => {
+  SENT.wa.push(["text", to, t, p]);
+  return [true, "", { status: 200, message_id: "wamid.TRACE1", dry_run: false }];
+};
+db.enqueue("whatsapp", "wa_text", { to: "919400000001", text: "hi", tenant_id: gym }, traceLead);
+await worker.drainChannel("whatsapp", 10);
+const accepted = db.leadEvents(traceLead).find((e) => e.type === "WA_ACCEPTED");
+check("the wamid Meta returned is stored on the lead",
+      Boolean(accepted) && accepted.detail.includes("wamid.TRACE1"),
+      accepted ? accepted.detail : "no WA_ACCEPTED event");
+
+// No token configured means post() reports success without sending anything.
+// That marks the row 'sent', so it has to be distinguishable from a delivery.
+waapi.sendText = (to, t, p = "") => {
+  SENT.wa.push(["text", to, t, p]);
+  return [true, "dry run", { dry_run: true, status: 0 }];
+};
+db.enqueue("whatsapp", "wa_text", { to: "919400000001", text: "hi again", tenant_id: gym }, traceLead);
+await worker.drainChannel("whatsapp", 10);
+check("a dry run is recorded as such, not as a delivery",
+      db.leadEvents(traceLead).some((e) => e.type === "WA_DRY_RUN"));
 
 // ------------------------------------------------------------------- shutdown
 client.close();

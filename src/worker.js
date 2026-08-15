@@ -51,8 +51,18 @@ function whatsappGate(item, payload) {
   const lead = item.lead_id ? db.getLead(item.lead_id) : null;
   if (!lead) return [true, ""];
 
-  // Always attempt sending for active flow or inbound leads
-  return [true, ""];
+  // Aimed at someone other than this lead's customer — an agent alert, which
+  // goes to a different number and carries its own template setting.
+  if (lead.wa_id && to !== lead.wa_id) return [true, ""];
+
+  // An active qualification flow needs no exemption: the customer answered a
+  // question moments ago, so isWindowOpen() is already true for it. Carving out
+  // a bypass here would only let genuinely stale sends through.
+  if (db.isWindowOpen(lead)) return [true, ""];
+
+  return [false,
+          `outside the ${config.WA_WINDOW_HOURS}h customer service window ` +
+          "(Cloud API error 131047) — needs an approved template"];
 }
 
 /** Send one queued message using the owning tenant's credentials. */
@@ -115,10 +125,20 @@ export async function drainChannel(channel, batch = 10) {
     // Claim before sending. An Instagram private reply is a one-shot
     // allowance; losing this race must mean "skip", never "send twice".
     if (!db.claimQueueItem(item.id)) continue;
-    const [ok, err] = await dispatch(item);
+    const [ok, err, data] = await dispatch(item);
     if (ok) {
       db.markQueue(item.id, "sent");
       sent += 1;
+      // Record the wamid. Meta reports the real outcome asynchronously as a
+      // `statuses` webhook keyed on this id, so without it a message that is
+      // accepted and then fails to deliver leaves no trace anywhere.
+      if (item.lead_id && data?.message_id) {
+        db.addEvent(item.lead_id, "WA_ACCEPTED",
+                    `${item.kind} → ${data.message_id}`);
+      } else if (item.lead_id && data?.dry_run) {
+        db.addEvent(item.lead_id, "WA_DRY_RUN",
+                    `${item.kind} — WHATSAPP_TOKEN not set, nothing sent`);
+      }
       if (item.lead_id && item.kind === "ig_private_reply") {
         db.advanceStage(item.lead_id, "DM_SENT", "private reply sent");
       } else if (item.lead_id && item.kind === "ig_dm") {
@@ -179,25 +199,52 @@ export function runRecovery() {
 let _lastPrune = 0;
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
-/** One pass. Exposed separately so tests can run it deterministically. */
+/** One pass, and never two at once.
+ *
+ * The guard lives HERE rather than in the interval callback because the webhook
+ * handlers call tick() directly for instant replies. With the guard only around
+ * the timer, a burst of inbound messages ran overlapping passes, and three
+ * things in a pass are not safe to run concurrently:
+ *
+ *   · the hourly budget — each pass reads sendsLastHour() before any of them
+ *     writes, so N passes each grant themselves a full batch and blow past
+ *     Meta's cap, which is the one thing the queue exists to prevent
+ *   · crm.drain()      — selects pending rows, awaits an HTTP POST, then marks
+ *                        them, with no atomic claim: two passes push twice
+ *   · runRecovery()    — reads leadsNeedingRecovery() then sets recovery_sent,
+ *                        same race, so a lead gets two nudges
+ *
+ * The outbound queue itself is safe either way, because claimQueueItem() is
+ * atomic — but the three above are not, so passes are serialised.
+ *
+ * A caller that arrives mid-pass gets `{ skipped: true }` and returns
+ * immediately. Nothing is lost: the work is already queued in the database and
+ * the pass in flight, or the next one, will drain it.
+ */
 export async function tick() {
-  db.reclaimStale();
+  if (_running) return { skipped: true };
+  _running = true;
+  try {
+    db.reclaimStale();
 
-  const nowMs = Date.now();
-  let pruned = 0;
-  if (nowMs - _lastPrune > PRUNE_INTERVAL_MS) {
-    _lastPrune = nowMs;
-    pruned = db.pruneProcessedEvents();
-    if (pruned) console.log(`pruned ${pruned} expired dedup rows`);
+    const nowMs = Date.now();
+    let pruned = 0;
+    if (nowMs - _lastPrune > PRUNE_INTERVAL_MS) {
+      _lastPrune = nowMs;
+      pruned = db.pruneProcessedEvents();
+      if (pruned) console.log(`pruned ${pruned} expired dedup rows`);
+    }
+
+    return {
+      instagram: await drainChannel("instagram"),
+      whatsapp: await drainChannel("whatsapp"),
+      recovery: runRecovery(),
+      crm: await crm.drain(),
+      pruned,
+    };
+  } finally {
+    _running = false;
   }
-
-  return {
-    instagram: await drainChannel("instagram"),
-    whatsapp: await drainChannel("whatsapp"),
-    recovery: runRecovery(),
-    crm: await crm.drain(),
-    pruned,
-  };
 }
 
 export function start() {
@@ -207,14 +254,10 @@ export function start() {
     `wa cap ${config.WA_SENDS_PER_HOUR}/hr)`,
   );
   _timer = setInterval(async () => {
-    if (_running) return; // never overlap two passes
-    _running = true;
     try {
-      await tick();
+      await tick(); // tick() serialises itself
     } catch (err) {
       console.error("worker tick failed:", err?.stack || err);
-    } finally {
-      _running = false;
     }
   }, config.QUEUE_TICK_SECONDS * 1000);
   _timer.unref?.();

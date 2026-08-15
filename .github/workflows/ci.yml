@@ -34,6 +34,9 @@ jobs:
       - name: Security, consent and privacy suite
         run: npm run test:security
 
+      - name: Primary tenant seeding and first-inbound routing
+        run: npm run test:seed
+
   secrets:
     runs-on: ubuntu-latest
     steps:

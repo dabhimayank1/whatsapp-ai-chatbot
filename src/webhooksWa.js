@@ -35,7 +35,16 @@ router.get("/webhook", (req, res) => {
 router.post("/webhook", requireValidSignature, (req, res) => {
   // Meta expects a fast 200, so the work happens after we have replied.
   const payload = req.body || {};
-  console.log("📥 INBOUND WHATSAPP WEBHOOK RECEIVED:", JSON.stringify(payload));
+  // Confirms delivery is arriving at all — the single most useful line when
+  // taps appear to do nothing — without putting phone numbers, profile names
+  // and message bodies into a hosting provider's log stream. The full payload
+  // is still available behind LOG_WEBHOOK_PAYLOADS when you need it.
+  const inboundCount = (payload.entry || [])
+    .flatMap((e) => e.changes || [])
+    .reduce((n, c) => n + ((c.value || {}).messages || []).length, 0);
+  console.log(`📥 inbound WhatsApp webhook: ${inboundCount} message(s)`);
+  logPayload("wa-webhook payload:", payload);
+
   res.status(200).send("OK");
   process_(payload).catch((err) =>
     console.error("whatsapp payload failed:", err?.stack || err));

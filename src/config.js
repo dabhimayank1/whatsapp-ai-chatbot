@@ -126,6 +126,12 @@ const config = {
   // unmappable event is logged and dropped instead.
   SINGLE_TENANT_MODE: envBool("SINGLE_TENANT_MODE", false),
 
+  // Seed the primary real-estate client on boot when it is missing, so a fresh
+  // deployment can answer WhatsApp immediately instead of dropping the first
+  // inbound message for want of a tenant to attribute it to. Unlike the demo
+  // seed this runs in production too. Set false to manage clients by hand.
+  SEED_PRIMARY_TENANT: envBool("SEED_PRIMARY_TENANT", true),
+
   // --------------------------------------------------- whatsapp 24-hour window
   // The Cloud API refuses free-form messages more than 24h after the customer's
   // last inbound one (error 131047). Business-initiated messages need an

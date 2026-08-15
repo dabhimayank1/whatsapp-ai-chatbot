@@ -18,11 +18,28 @@ const BUTTON_TITLE_MAX = 20;
 const LIST_TITLE_MAX = 24;
 const BODY_MAX = 1024;
 
-/** Send from a specific number, or the shared one if not specified. */
+/** Send from a specific number, or the shared one if not specified.
+ *
+ * Returns `[ok, error, data]`. The third element is new and is what makes a
+ * failed delivery diagnosable:
+ *
+ *   { status, message_id, recipient, error_code, error_subcode, error_title,
+ *     fbtrace_id, dry_run }
+ *
+ * Two things worth understanding about `ok`:
+ *
+ *   · A 200 from Meta means ACCEPTED, not delivered. The real outcome arrives
+ *     later on the webhook as a `statuses` entry (sent → delivered → read, or
+ *     failed). `message_id` is the wamid those statuses refer back to, so
+ *     capturing it here is what lets you join the two together.
+ *   · With no token configured this returns ok WITHOUT sending anything. That
+ *     is deliberate for offline development, but it marks the queue row `sent`,
+ *     so `dry_run: true` is set to distinguish it from a real delivery.
+ */
 async function post(payload, phoneNumberId = "") {
   if (!config.WHATSAPP_TOKEN) {
-    console.warn("WHATSAPP_TOKEN missing — dry run:", JSON.stringify(payload));
-    return [true, "dry run"];
+    console.warn("WHATSAPP_TOKEN missing — dry run, nothing was sent to Meta");
+    return [true, "dry run", { dry_run: true, status: 0 }];
   }
   const pnid = phoneNumberId || config.PHONE_NUMBER_ID;
   const url = `${config.GRAPH}/${pnid}/messages`;
@@ -36,15 +53,41 @@ async function post(payload, phoneNumberId = "") {
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15_000),
     });
+
+    const body = await r.text();
+    let parsed = null;
+    try { parsed = JSON.parse(body); } catch { /* Meta always sends JSON; tolerate it if not */ }
+
     if (r.status >= 400) {
-      const body = await r.text();
-      console.error(`WhatsApp send failed ${r.status}: ${body}`);
-      return [false, `${r.status} ${body.slice(0, 200)}`];
+      const e = (parsed && parsed.error) || {};
+      const detail = {
+        status: r.status,
+        error_code: e.code ?? null,
+        error_subcode: e.error_subcode ?? null,
+        error_title: e.error_user_title || e.type || null,
+        error_message: e.message || body.slice(0, 200),
+        fbtrace_id: e.fbtrace_id ?? null,
+      };
+      console.error(
+        `WhatsApp send failed ${r.status} code=${detail.error_code ?? "-"}` +
+        `${detail.error_subcode ? `/${detail.error_subcode}` : ""}: ${detail.error_message}`,
+      );
+      // Keep the code in the error string: worker.js classifies retryable vs
+      // permanent failures by matching on it.
+      return [false, `${r.status} ${e.code ? `[${e.code}] ` : ""}${detail.error_message}`, detail];
     }
-    return [true, ""];
+
+    const sent = (parsed?.messages || [])[0] || {};
+    return [true, "", {
+      status: r.status,
+      message_id: sent.id ?? null,
+      message_status: sent.message_status ?? null,
+      recipient: (parsed?.contacts || [])[0]?.wa_id ?? null,
+      dry_run: false,
+    }];
   } catch (err) {
     console.error("WhatsApp request failed:", err?.message || err);
-    return [false, String(err?.message || err)];
+    return [false, String(err?.message || err), { status: 0, network_error: true }];
   }
 }
 

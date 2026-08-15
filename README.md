@@ -62,10 +62,19 @@ login unable to reach another client's data.
 npm run test:security
 ```
 
-90 checks on the things that are invisible when they work: webhook signature
+107 checks on the things that are invisible when they work: webhook signature
 verification, the subscription handshake, tenant resolution refusing to guess,
-the WhatsApp 24-hour window, opt-out, deletion actually deleting, and admin
-login throttling.
+the WhatsApp 24-hour window, opt-out, deletion actually deleting, admin login
+throttling, and free-text answers matching on whole words only.
+
+```bash
+npm run test:seed
+```
+
+41 checks that a fresh production deployment can answer WhatsApp on its first
+inbound message: the primary client is seeded even under `NODE_ENV=production`,
+its five questions are correct, seeding is idempotent, operator edits survive a
+reboot, and an inbound "Hi" routes by `phone_number_id` straight to Question 0.
 
 ```bash
 npm run seed
@@ -239,9 +248,22 @@ If a viewer edits the prefilled text away, the lead is still created as
 | `testSecurity.js` | 90-check authenticity, consent and privacy suite |
 | `seedDemo.js` | Three demo clients across three verticals |
 
-Demo seeding is skipped when `NODE_ENV=production` unless you pass
-`SEED_DEMO_TENANTS=true`. On a host with no persistent disk it was recreating
-three clients with the password `demo123` after every deploy.
+Two different seeds, and the difference matters:
+
+| Seed | When | What |
+|---|---|---|
+| **Primary tenant** (`ensurePrimaryTenant`) | every boot, **including production** | the one real client — Skyline Properties on `wa_phone_number_id 1200586793147016` — with its five questions. Disable with `SEED_PRIMARY_TENANT=false`. |
+| **Demo clients** (`ensureDefaultTenants`) | only outside production, and only into an empty database | three sample clients with the password `demo123`. Force with `SEED_DEMO_TENANTS=true`. |
+
+The primary seed exists because of a real outage: Render runs
+`NODE_ENV=production` on a disk that starts empty, so the demo seed was skipped
+and the `tenants` table stayed empty. An inbound "Hi" then resolved to no
+tenant, `tenants.questions(null)` returned `[]`, and `startFlow()` never ran —
+the customer got a generic AI reply and no qualification questions at all.
+
+It is conservative about a client that already exists: routing fields are filled
+in only when blank, never overwritten, and questions are seeded only when there
+are none. Edits made in the portal outrank the constant in the source.
 
 ---
 

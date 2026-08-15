@@ -200,21 +200,36 @@ check("neither was asked the other's question",
       !propQs.some((b) => b.toLowerCase().includes("fitness")));
 
 section("7 · Domain lock is per tenant");
+// Off-topic mid-flow produces TWO messages, in this order: the refusal, then
+// the current question again so the qualification is not left stranded. So
+// look for the refusal among what was sent rather than assuming it landed last.
+const sentTo = (waId, from) =>
+  SENT.wa.filter(([, to]) => to === waId).slice(from).map((x) => x[2]);
+const refusal = (msgs) => msgs.find((b) => b.includes("only help with questions about"));
+
+let gymFrom = SENT.wa.filter(([, to]) => to === "919800000001").length;
 await webhooksWa.process_(
   waText("W3", "what BHK flats do you have?", "919800000001", "PN_SHARED"));
 await worker.drainChannel("whatsapp", 40);
-const lastGym = SENT.wa.filter(([, to]) => to === "919800000001").at(-1)[2];
-check("gym bot refuses a property question",
-      lastGym.includes("only help with questions about"), lastGym.slice(0, 56));
+const gymReplies = sentTo("919800000001", gymFrom);
+const gymRefusal = refusal(gymReplies);
+check("gym bot refuses a property question", Boolean(gymRefusal),
+      (gymRefusal || gymReplies.at(-1) || "nothing sent").slice(0, 56));
+check("...and re-presents the question it was on",
+      gymReplies.at(-1)?.toLowerCase().includes("fitness goal"),
+      JSON.stringify(gymReplies.at(-1)?.slice(0, 40)));
 
+let propFrom = SENT.wa.filter(([, to]) => to === "919800000002").length;
 await webhooksWa.process_(
   waText("W4", "do you have a gym membership?", "919800000002", "PN_SHARED"));
 await worker.drainChannel("whatsapp", 40);
-const lastProp = SENT.wa.filter(([, to]) => to === "919800000002").at(-1)[2];
-check("property bot refuses a fitness question",
-      lastProp.includes("only help with questions about"), lastProp.slice(0, 56));
+const propReplies = sentTo("919800000002", propFrom);
+const propRefusal = refusal(propReplies);
+check("property bot refuses a fitness question", Boolean(propRefusal),
+      (propRefusal || propReplies.at(-1) || "nothing sent").slice(0, 56));
 check("each refusal names its own business",
-      lastGym.includes("Priya Fitness") && lastProp.includes("Skyline Properties"));
+      Boolean(gymRefusal?.includes("Priya Fitness")) &&
+      Boolean(propRefusal?.includes("Skyline Properties")));
 
 section("8 · Dedicated number routes without a ref code");
 await webhooksWa.process_(

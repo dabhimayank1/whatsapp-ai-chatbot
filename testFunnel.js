@@ -246,6 +246,12 @@ section("11 · CRM outbox");
 config.CRM_ADAPTER = "csv";
 config.CRM_CSV_PATH = path.join(os.tmpdir(), "funnel_test_crm.csv");
 if (fs.existsSync(config.CRM_CSV_PATH)) fs.rmSync(config.CRM_CSV_PATH);
+// The webhook handlers call worker.tick() for instant replies, and a tick
+// drains the CRM outbox too — so the row queued when this lead qualified was
+// already pushed through the 'null' adapter back in section 7. Queue it again
+// now that the csv adapter is selected, so what is under test here is the
+// adapter rather than the leftover timing of an earlier section.
+crm.pushLead(lead.id);
 const synced = await crm.drain();
 check("crm rows drained", synced >= 1, `${synced} rows`);
 check("csv written", fs.existsSync(config.CRM_CSV_PATH));

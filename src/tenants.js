@@ -193,9 +193,16 @@ export function resolveForWhatsapp(refCode = "", waId = "", phoneNumberId = "", 
     if (lead && lead.tenant_id) return get(lead.tenant_id);
   }
 
-  // 4. Default fallback for direct WhatsApp messages without a ref code
-  const active = allTenants(true);
-  return active.length ? active[0] : null;
+  // 4. Nothing identified them. Guessing is only safe when there is exactly one
+  //    client to guess, which is what soleTenantFallback() enforces — it needs
+  //    SINGLE_TENANT_MODE *and* a single active tenant.
+  //
+  //    Returning allTenants(true)[0] unconditionally is what this used to do,
+  //    and on a deployment with three active tenants it handed every
+  //    unattributed message on the shared number to whichever client sorts
+  //    first by name. The lead is still created either way; it is simply left
+  //    unattributed rather than attributed to the wrong client.
+  return soleTenantFallback("this WhatsApp message belongs to");
 }
 
 /** The number customers message for this tenant. */
@@ -410,7 +417,127 @@ export function applyTemplate(tenantId, vertical) {
  * on a public URL, over and over. Set SEED_DEMO_TENANTS=true if you deliberately
  * want the demo data in a production-like environment.
  */
+// ------------------------------------------------------- primary tenant seed
+/**
+ * The live real-estate client, seeded on boot when missing.
+ *
+ * This exists because of a specific production failure. Render runs with
+ * NODE_ENV=production, where the demo seed is deliberately skipped, and its
+ * disk starts empty — so the tenants table was empty. An inbound "Hi" then
+ * resolved to no tenant, `tenants.questions(null)` returned [], and
+ * `startFlow()` never ran: the customer got a generic AI reply and no
+ * qualification questions at all.
+ *
+ * `wa_phone_number_id` is the load-bearing field. It is what
+ * `resolveForWhatsapp()` matches on step 2, so a message arriving on this
+ * number resolves to this client with no ref code needed.
+ *
+ * Scores are tuned so the maximum is exactly 100 (15+15+25+30+15), which keeps
+ * the HOT/WARM bands meaningful without relying on normalisation to rescale.
+ */
+export const PRIMARY_TENANT = {
+  slug: "skyline-properties",
+  name: "Skyline Properties",
+  vertical: "real_estate",
+  domain_name: "real estate and property services",
+  wa_phone_number_id: "1200586793147016",
+  wa_business_number: "15552041400",
+  knowledge_base:
+    "Skyline Properties, RERA registered. Skyline Satellite: 3BHK ₹1.42 Cr, " +
+    "4BHK ₹1.95 Cr, ready to move. Skyline Greens: 2BHK ₹62 L, 3BHK ₹94 L, " +
+    "possession Dec 2027. Booking amount ₹2 lakh. Free site visit pickup " +
+    "available. Home loan assistance from partner banks.",
+  questions: [
+    { key: "purpose", qtype: "button",
+      question: "Welcome to Skyline Properties! 🏠 Are you looking to Buy, Rent, or Invest?",
+      options: [["buy", "Buy"], ["rent", "Rent"], ["invest", "Invest"]],
+      score_map: { buy: 15, rent: 8, invest: 15 } },
+    { key: "config", qtype: "button",
+      question: "What configuration are you after?",
+      options: [["1bhk", "1 BHK"], ["2bhk", "2 BHK"], ["3bhk", "3 BHK"]],
+      score_map: { "1bhk": 10, "2bhk": 12, "3bhk": 15 } },
+    { key: "budget", qtype: "button",
+      question: "What budget range should I work with?",
+      options: [["under-50L", "Under ₹50L"], ["50L-1Cr", "₹50L - ₹1Cr"],
+                ["1-2Cr", "₹1Cr - ₹2Cr"]],
+      score_map: { "under-50L": 10, "50L-1Cr": 20, "1-2Cr": 25 } },
+    { key: "timeline", qtype: "button",
+      question: "How soon are you planning to move on this?",
+      options: [["immediate", "Immediately"], ["30days", "Within 30 days"],
+                ["exploring", "Just exploring"]],
+      score_map: { immediate: 30, "30days": 20, exploring: 0 } },
+    { key: "site_visit", qtype: "button",
+      question: "Would you like a free site visit pickup?",
+      options: [["yes", "Yes please"], ["maybe", "Maybe later"], ["no", "No thanks"]],
+      score_map: { yes: 15, maybe: 5, no: 0 } },
+  ],
+};
+
+/**
+ * Create the primary client if it is missing. Idempotent, and safe to run on
+ * every boot.
+ *
+ * Deliberately conservative about a client that already exists: routing fields
+ * are only filled in when blank, never overwritten, and questions are only
+ * seeded when there are none. An operator's edits in the portal outrank a
+ * constant in the source, so this must never undo them.
+ *
+ * Returns the tenant id, or null when seeding is disabled.
+ */
+export function ensurePrimaryTenant() {
+  if (!config.SEED_PRIMARY_TENANT) return null;
+
+  const spec = PRIMARY_TENANT;
+  const existing = bySlug(spec.slug) ||
+    db.row("SELECT * FROM tenants WHERE wa_phone_number_id = ?", [spec.wa_phone_number_id]);
+
+  if (existing) {
+    // Backfill only what is missing, so routing works without clobbering edits.
+    const fill = {};
+    if (!existing.wa_phone_number_id) fill.wa_phone_number_id = spec.wa_phone_number_id;
+    if (!existing.wa_business_number) fill.wa_business_number = spec.wa_business_number;
+    if (Object.keys(fill).length) {
+      update(existing.id, fill);
+      console.log(`primary tenant: filled in ${Object.keys(fill).join(", ")}`);
+    } else if (existing.wa_phone_number_id !== spec.wa_phone_number_id) {
+      console.warn(
+        `primary tenant '${existing.slug}' is on wa_phone_number_id ` +
+        `${existing.wa_phone_number_id}, not ${spec.wa_phone_number_id} — leaving ` +
+        "it alone. Messages to the configured number will not reach this client.",
+      );
+    }
+
+    if (!questions(existing.id).length) {
+      setQuestions(existing.id, spec.questions);
+      console.log(`primary tenant: seeded ${spec.questions.length} questions`);
+    }
+    return existing.id;
+  }
+
+  const tid = create({
+    name: spec.name,
+    slug: spec.slug,
+    domain_name: spec.domain_name,
+    vertical: spec.vertical,
+    wa_phone_number_id: spec.wa_phone_number_id,
+    wa_business_number: spec.wa_business_number,
+    knowledge_base: spec.knowledge_base,
+  });
+  setQuestions(tid, spec.questions);
+  console.log(
+    `seeded primary tenant '${spec.slug}' (id ${tid}) on wa_phone_number_id ` +
+    `${spec.wa_phone_number_id} with ${spec.questions.length} questions, ` +
+    `max score ${maxScore(tid)}`,
+  );
+  return tid;
+}
+
 export function ensureDefaultTenants() {
+  // The live client is seeded first and in EVERY environment, including
+  // production. It is real configuration the deployment cannot answer WhatsApp
+  // without — unlike the demo clients below, which are sample data.
+  ensurePrimaryTenant();
+
   if (allTenants().length > 0) return;
 
   const isProduction = process.env.NODE_ENV === "production";
@@ -496,5 +623,6 @@ export default {
   slugify, create, update, get, bySlug, byPortalUser, allTenants, checkLogin,
   byInstagram, byPhoneNumberId, resolveForWhatsapp, whatsappNumber, phoneNumberId,
   outOfScopeMessage, text, questions, applyTemplate, TEMPLATES, ensureDefaultTenants,
+  ensurePrimaryTenant, PRIMARY_TENANT, maxScore, setQuestions,
 };
 
