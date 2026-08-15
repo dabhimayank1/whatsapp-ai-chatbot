@@ -146,6 +146,27 @@ export async function handleText(lead, text) {
     return;
   }
 
+  // If user typed text that matches an option of the active qualification step, process it as an answer!
+  if (lead.flow_active && lead.tenant_id) {
+    const steps = tenants.questions(lead.tenant_id);
+    const index = lead.flow_step;
+    if (index < steps.length) {
+      const step = steps[index];
+      const match = step.options.find(
+        ([id, title]) =>
+          id.toLowerCase() === lowered ||
+          title.toLowerCase() === lowered ||
+          lowered.includes(id.toLowerCase()) ||
+          lowered.includes(title.toLowerCase()),
+      );
+      if (match) {
+        console.log(`text reply matched step ${index} option: ${match[0]} (${match[1]})`);
+        handleInteractiveReply(lead, match[0], match[1]);
+        return;
+      }
+    }
+  }
+
   // A message carrying this lead's own ref code is the prefilled text WE
   // wrote, arriving from our own reel. It is in scope by construction —
   // running it through the classifier risks refusing a lead over our own
