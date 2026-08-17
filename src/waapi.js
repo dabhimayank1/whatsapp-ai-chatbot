@@ -48,7 +48,7 @@ async function post(payload, phoneNumberId = "") {
     const r = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${config.WHATSAPP_TOKEN}`,
+        Authorization: `Bearer ${(config.WHATSAPP_TOKEN || "").trim().replace(/^["']|["']$/g, "")}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),

@@ -16,7 +16,7 @@ import config from "./config.js";
 import * as tenants from "./tenants.js";
 
 async function post(url, payload, token = "") {
-  const bearer = token || config.IG_TOKEN;
+  const bearer = (token || config.IG_TOKEN || "").trim().replace(/^["']|["']$/g, "");
 
 
 
