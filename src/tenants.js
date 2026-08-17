@@ -519,18 +519,16 @@ export function ensurePrimaryTenant() {
       console.log(`primary tenant: seeded ${spec.questions.length} questions`);
     }
     if (!db.rows("SELECT * FROM campaigns WHERE tenant_id = ?", [existing.id]).length) {
-      if (process.env.RENDER || (config.SINGLE_TENANT_MODE && process.env.NODE_ENV === "production")) {
-        db.upsertCampaign({
-          media_id: "REEL_PRIMARY_DEFAULT",
-          tenant_id: existing.id,
-          name: "Skyline Satellite 3BHK Walkthrough",
-          keywords: "price,info,details,flat,bhk,book,buy,cost,join,plan,menu",
-          property_ref: "3BHK Satellite",
-          dm_strategy: "two_step",
-          active: 1,
-        });
-        console.log("primary tenant: seeded default campaign");
-      }
+      db.upsertCampaign({
+        media_id: "REEL_PRIMARY_DEFAULT",
+        tenant_id: existing.id,
+        name: "Skyline Satellite 3BHK Walkthrough",
+        keywords: "price,info,details,flat,bhk,book,buy,cost,join,plan,menu",
+        property_ref: "3BHK Satellite",
+        dm_strategy: "two_step",
+        active: 1,
+      });
+      console.log("primary tenant: seeded default campaign");
     }
     return existing.id;
   }
