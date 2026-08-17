@@ -220,13 +220,28 @@ const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
  *   · crm.drain()      — selects pending rows, awaits an HTTP POST, then marks
  *                        them, with no atomic claim: two passes push twice
  *   · runRecovery()    — reads leadsNeedingRecovery() then sets recovery_sent,
- *                        same race, so a lead gets two nudges
+let _lastTokenRefresh = 0;
+const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+export async function checkTokenRefresh() {
+  const nowMs = Date.now();
+  if (nowMs - _lastTokenRefresh < REFRESH_INTERVAL_MS) return;
+  _lastTokenRefresh = nowMs;
+
+  if (config.IG_TOKEN && !config.IG_TOKEN.startsWith("TOK_")) {
+    const [ok, newToken] = await igapi.refreshInstagramToken(config.IG_TOKEN);
+    if (ok && newToken && newToken !== config.IG_TOKEN) {
+      config.IG_TOKEN = newToken;
+      db.run("UPDATE tenants SET ig_token = ? WHERE id = 1", [newToken]);
+      console.log("IG_TOKEN auto-refreshed and saved to database successfully!");
+    }
+  }
+}
+
+/** Run one pass of the worker queue.
  *
- * The outbound queue itself is safe either way, because claimQueueItem() is
- * atomic — but the three above are not, so passes are serialised.
- *
- * A caller that arrives mid-pass gets `{ skipped: true }` and returns
- * immediately. Nothing is lost: the work is already queued in the database and
+ * Safe to call concurrently from webhook handlers: if a pass is already in
+ * flight, this returns immediately with `{ skipped: true }` knowing that
  * the pass in flight, or the next one, will drain it.
  */
 export async function tick() {
@@ -234,6 +249,7 @@ export async function tick() {
   _running = true;
   try {
     db.reclaimStale();
+    await checkTokenRefresh();
 
     const nowMs = Date.now();
     let pruned = 0;

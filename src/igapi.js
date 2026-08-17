@@ -148,4 +148,39 @@ async function sendDm(igUserId, text, tenantId = null) {
   return [ok, err];
 }
 
-export default { creds, privateReply, publicReply, sendDm };
+export async function refreshInstagramToken(currentToken) {
+  if (!currentToken || currentToken.startsWith("TOK_")) return [false, "no token"];
+  try {
+    // 1. Try Instagram Graph API refresh endpoint (for Instagram Login tokens)
+    const urlIg = `${config.IG_GRAPH}/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(currentToken)}`;
+    const r1 = await fetch(urlIg, { method: "GET", signal: AbortSignal.timeout(10_000) });
+    if (r1.ok) {
+      const data1 = await r1.json();
+      if (data1.access_token) {
+        console.log("Instagram Long-Lived Token Refreshed via ig_refresh_token!");
+        return [true, data1.access_token];
+      }
+    }
+
+    // 2. Try Facebook Graph API exchange endpoint if APP_ID & APP_SECRET are present
+    const appId = process.env.META_APP_ID || "1773979650614005";
+    const appSecret = config.META_APP_SECRET;
+    if (appId && appSecret) {
+      const urlFb = `${config.GRAPH}/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${encodeURIComponent(currentToken)}`;
+      const r2 = await fetch(urlFb, { method: "GET", signal: AbortSignal.timeout(10_000) });
+      if (r2.ok) {
+        const data2 = await r2.json();
+        if (data2.access_token) {
+          console.log("Instagram Token Refreshed via fb_exchange_token!");
+          return [true, data2.access_token];
+        }
+      }
+    }
+    return [false, "Token refresh response did not contain access_token"];
+  } catch (err) {
+    console.error("Error refreshing IG token:", err?.message || err);
+    return [false, String(err?.message || err)];
+  }
+}
+
+export default { creds, privateReply, publicReply, sendDm, refreshInstagramToken };
