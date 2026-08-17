@@ -494,15 +494,15 @@ export function ensurePrimaryTenant() {
     db.row("SELECT * FROM tenants WHERE wa_phone_number_id = ?", [spec.wa_phone_number_id]);
 
   if (existing) {
-    // Backfill only what is missing, so routing works without clobbering edits.
+    // Backfill only what is missing or updated, so routing works without clobbering edits.
     const fill = {};
     if (!existing.wa_phone_number_id) fill.wa_phone_number_id = spec.wa_phone_number_id;
     if (!existing.wa_business_number) fill.wa_business_number = spec.wa_business_number;
-    if (!existing.ig_user_id) fill.ig_user_id = spec.ig_user_id;
-    if (!existing.ig_username) fill.ig_username = spec.ig_username;
+    if (existing.ig_user_id !== spec.ig_user_id) fill.ig_user_id = spec.ig_user_id;
+    if (existing.ig_username !== spec.ig_username) fill.ig_username = spec.ig_username;
     if (Object.keys(fill).length) {
       update(existing.id, fill);
-      console.log(`primary tenant: filled in ${Object.keys(fill).join(", ")}`);
+      console.log(`primary tenant: updated ${Object.keys(fill).join(", ")}`);
     } else if (existing.wa_phone_number_id !== spec.wa_phone_number_id) {
       console.warn(
         `primary tenant '${existing.slug}' is on wa_phone_number_id ` +
