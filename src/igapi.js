@@ -48,18 +48,7 @@ async function post(url, payload, token = "") {
         if (parsed.error) {
           const e = parsed.error;
           errDetail = `${r.status} [${e.type || "OAuthException"}:${e.code || r.status}] ${e.message || text}`;
-          console.error("Instagram API call failed:");
-          console.error(`  status: ${r.status}`);
-          console.error(`  code: ${e.code || "unknown"}`);
-          console.error(`  type: ${e.type || "unknown"}`);
-          console.error(`  message: ${e.message || "none"}`);
-          if (e.fbtrace_id) console.error(`  fbtrace_id: ${e.fbtrace_id}`);
-        } else {
-          console.error(`Instagram API call failed ${r.status}: ${text.slice(0, 200)}`);
         }
-      } catch {
-        console.error(`Instagram API call failed ${r.status}: ${text.slice(0, 200)}`);
-      }
       return [false, errDetail];
     }
     return [true, ""];
