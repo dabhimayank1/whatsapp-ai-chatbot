@@ -36,6 +36,17 @@ services:
       - key: CRM_CSV_PATH
         value: /var/data/crm_export.csv
 
+      # Render always terminates TLS at its own proxy, so both of these are
+      # facts about the platform rather than choices.
+      #
+      # Without TRUST_PROXY the app sees the proxy's address as req.ip and every
+      # rate limiter counts the whole internet as a single client — one noisy
+      # visitor then locks everyone out of the login.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: COOKIE_SECURE
+        value: "true"
+
       # Generated once by Render and then held — regenerating it logs every
       # portal user out.
       - key: SECRET_KEY
@@ -70,6 +81,18 @@ services:
       - key: SINGLE_TENANT_MODE      # 'true' only while one client exists
         sync: false
       - key: WA_ALERT_TEMPLATE       # approved template for agent alerts
+        sync: false
+      - key: WA_REENGAGE_TEMPLATE    # approved template for the 20-min nudge
+        sync: false
+
+      # The business this deployment speaks for. BUSINESS_NAME is the name on
+      # the public /privacy page that App Review reads, and DOMAIN_NAME is the
+      # subject the bot refuses to stray outside of. Leave either unset and the
+      # app boots with the sample real-estate business and says so in public —
+      # /health reports it as a configuration warning.
+      - key: BUSINESS_NAME
+        sync: false
+      - key: DOMAIN_NAME
         sync: false
       - key: CRM_ADAPTER
         value: csv

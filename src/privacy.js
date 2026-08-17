@@ -7,8 +7,10 @@
  * way — so the endpoints here do the deletion for real:
  *
  *   GET  /privacy                      the policy, including how to be deleted
+ *   GET  /terms                        terms of service, required to go Live
  *   POST /data-deletion                Meta's signed data deletion callback
  *   GET  /data-deletion/status/:code   the status URL that callback must return
+ *   POST /deauthorize                  Meta's signed deauthorize callback
  *   POST /privacy/delete-request       a human asking, from the policy page
  *
  * Meta's callback arrives as a `signed_request` signed with the app secret. It
@@ -93,17 +95,43 @@ router.get("/privacy", (req, res) => {
   <h1>Privacy Policy &amp; User Data Deletion</h1>
   <p class="sub">${escapeHtml(config.BUSINESS_NAME)}</p>
 
+  <h2>Who we are</h2>
+  <p>${escapeHtml(config.BUSINESS_NAME)} operates this messaging service on
+  behalf of the businesses that use it — the shop, gym, studio or agency whose
+  Instagram post you commented on. Throughout this policy, "the business you
+  contacted" means that business. They decide what to ask you and what to do
+  with your enquiry; we run the software that carries it.</p>
+
   <h2>What we collect</h2>
-  <p>When you comment on one of our Instagram posts or message us on WhatsApp, we
-  store your Instagram username and account id, your WhatsApp number and profile
-  name, the messages exchanged with our assistant, and the answers you give to
-  our qualification questions. We use it for one purpose: to answer your enquiry
-  and pass it to the right person on the team.</p>
+  <p>When you comment on one of their Instagram posts or message them on
+  WhatsApp, we store your Instagram username and account id, your WhatsApp
+  number and profile name, the messages exchanged with the assistant, and the
+  answers you give to its qualification questions. We use it for one purpose:
+  to answer your enquiry and pass it to the right person at that business.</p>
 
   <h2>What we do not do</h2>
-  <p>We do not sell your data, use it for advertising, or share it with anyone
-  beyond the business you contacted and the systems that deliver these messages
-  (Meta, and our own CRM).</p>
+  <p>We do not sell your data or use it for advertising. We do not mix your
+  enquiry with any other business's — an enquiry to one business is never
+  visible to another. Beyond the business you contacted, your data reaches only
+  the service providers listed below.</p>
+
+  <h2>Who else handles your data</h2>
+  <p>We use a small number of service providers to run this service. They process
+  your data only on our instructions, and for no purpose of their own:</p>
+  <ul>
+    <li><b>The business you contacted</b> — receives your enquiry and your
+    answers, which is the whole point of the exchange. They are responsible for
+    what they do with it after that.</li>
+    <li><b>Meta Platforms</b> — delivers the Instagram and WhatsApp messages
+    themselves.</li>
+    <li><b>Groq, Inc.</b> (United States) — generates the assistant's replies.
+    It receives the text of your messages and the conversation so far. It does
+    not receive your phone number or your Instagram account id.</li>
+    <li><b>Render Services, Inc.</b> (United States) — hosts this service and
+    stores its database.</li>
+  </ul>
+  <p>Because these providers operate outside your country, your data is
+  transferred internationally to reach them.</p>
 
   <h2>Delete my data</h2>
   <p>Enter the WhatsApp number or Instagram username you contacted us from. The
@@ -115,15 +143,85 @@ router.get("/privacy", (req, res) => {
     <button type="submit">Delete my data</button>
   </form>
 
-  <h2>Deletion via Instagram</h2>
-  <p>If you remove this app from your Instagram account, Meta notifies us and the
-  same deletion runs automatically. You will be given a confirmation code and a
-  status URL of the form <code>/data-deletion/status/&lt;code&gt;</code>.</p>
+  <h2>Through Instagram</h2>
+  <p>If you <b>revoke this app's access</b> from your Instagram settings, Meta
+  notifies us and we immediately stop every automated message to you, including
+  anything already queued. Your enquiry itself is kept, so we can still answer
+  it — erasing it is the separate step below.</p>
+  <p>If you <b>request deletion of your data</b> through Meta, the erasure above
+  runs automatically. You will be given a confirmation code and a status URL of
+  the form <code>/data-deletion/status/&lt;code&gt;</code>.</p>
+  <p>Replying <code>STOP</code> on WhatsApp has the same effect as revoking
+  access, and <code>START</code> reverses it.</p>
 
   <h2>Retention</h2>
   <p>Leads are kept while the enquiry is open and for as long as the business
   needs them to serve you. Internal de-duplication records are discarded after
   ${config.PROCESSED_EVENT_RETENTION_DAYS} days.</p>
+
+  <p style="margin-top:2.5rem"><a href="/terms">Terms of Service</a></p>
+</body>
+</html>`);
+});
+
+// -------------------------------------------------------------------- terms
+/** Terms of service.
+ *
+ * Basic Settings will not let an app switch to Live without both a privacy
+ * policy URL and a terms of service URL, so this is a submission blocker rather
+ * than a nicety. It is deliberately short: this service sends messages on a
+ * business's behalf, and the only commitments worth making are the ones the
+ * code actually keeps.
+ */
+router.get("/terms", (req, res) => {
+  res.status(200).type("html").send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Terms of Service — ${escapeHtml(config.BUSINESS_NAME)}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+           max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem;
+           line-height: 1.65; color: #1a1a1a; }
+    h1 { font-size: 1.6rem; margin-bottom: .25rem; }
+    h2 { font-size: 1.1rem; margin-top: 2rem; }
+    .sub { color: #666; margin-top: 0; }
+    code { background: #f4f4f5; padding: .1rem .35rem; border-radius: 4px; }
+    a { color: #128c7e; }
+  </style>
+</head>
+<body>
+  <h1>Terms of Service</h1>
+  <p class="sub">${escapeHtml(config.BUSINESS_NAME)}</p>
+
+    <h2>What this service is</h2>
+    <p>An automated assistant that replies to comments on our Instagram posts
+    and continues the conversation on WhatsApp, so we can answer your enquiry
+    and pass it to the right person on our team. You are talking to software
+    until a member of our team takes over.</p>
+
+    <h2>Using it</h2>
+    <p>Message us only about ${escapeHtml(config.DOMAIN_NAME)}. The assistant
+    will not answer anything outside that. Do not send payment details,
+    passwords, or identity documents — we neither ask for them nor need them.</p>
+
+    <h2>Stopping it</h2>
+    <p>Reply <code>STOP</code> at any time and every automated message ceases,
+    including anything already queued. Reply <code>START</code> to resume. To
+    have your data erased rather than merely paused, use the form on our
+    <a href="/privacy">privacy policy</a>.</p>
+
+    <h2>What we do not promise</h2>
+    <p>Message delivery depends on Meta's Instagram and WhatsApp platforms and
+    is outside our control. The assistant answers from a fixed knowledge base
+    and can be wrong or out of date; nothing it says is a binding offer, quote,
+    or professional advice. Confirm anything that matters with a member of our
+    team before relying on it.</p>
+
+    <h2>Your data</h2>
+    <p>Covered by our <a href="/privacy">privacy policy</a>, which also lists
+    every service provider that handles your data and how to delete it.</p>
 </body>
 </html>`);
 });
@@ -198,6 +296,55 @@ router.post("/data-deletion", (req, res) => {
     url: `${config.PUBLIC_BASE_URL}/data-deletion/status/${code}`,
     confirmation_code: code,
   });
+});
+
+// ---------------------------------------------- Meta's deauthorize callback
+/**
+ * Meta calls this when a user revokes the app's access to their account.
+ *
+ * Deliberately not the same thing as `/data-deletion`. Revoking access means
+ * "stop using my account", not "forget me" — a business is usually still
+ * entitled, and sometimes obliged, to keep the record of an enquiry it is
+ * mid-way through answering. So this suppresses everything automated and
+ * leaves the record standing; the user erases it separately, from /privacy,
+ * and Meta's own deletion callback still erases on request.
+ *
+ * Meta ignores the response body here, but a 200 is what stops it retrying.
+ */
+router.post("/deauthorize", (req, res) => {
+  const signed = (req.body || {}).signed_request;
+
+  if (!config.META_APP_SECRET) {
+    console.error("deauthorize callback received but META_APP_SECRET is not set");
+    return res.status(503).json({ error: "deauthorize callback not configured" });
+  }
+
+  const payload = parseSignedRequest(signed);
+  if (!payload || !payload.user_id) {
+    console.error("rejected deauthorize callback: signed_request did not verify");
+    return res.status(400).json({ error: "invalid signed_request" });
+  }
+
+  const leads = db.leadsForSubject({ igUserId: String(payload.user_id) });
+  let paused = 0;
+  for (const lead of leads) {
+    // optOut() keys on the WhatsApp number, which is the only identifier the
+    // queue and the flow are suppressed by. A lead that reached us through
+    // Instagram and never opened WhatsApp has none, so pause it directly.
+    if (lead.wa_id) paused += db.optOut(lead.wa_id);
+    else {
+      db.updateLead(lead.id, { bot_paused: 1, flow_active: 0 });
+      db.run(
+        "UPDATE outbound_queue SET status = 'cancelled', " +
+          "last_error = 'access revoked by user' " +
+          "WHERE status = 'pending' AND lead_id = ?", [lead.id]);
+      paused += 1;
+    }
+    db.addEvent(lead.id, "DEAUTHORIZED", "user revoked app access on Instagram");
+  }
+
+  console.log(`deauthorize: suppressed ${paused} lead(s) for instagram user`);
+  return res.status(200).json({ status: "ok" });
 });
 
 router.get("/data-deletion/status/:code", (req, res) => {

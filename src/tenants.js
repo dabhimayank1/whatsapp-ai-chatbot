@@ -442,6 +442,8 @@ export const PRIMARY_TENANT = {
   domain_name: "real estate and property services",
   wa_phone_number_id: "1200586793147016",
   wa_business_number: "15552041400",
+  ig_user_id: "17841448785224373",
+  ig_username: "jay_dwarkadhish__31",
   knowledge_base:
     "Skyline Properties, RERA registered. Skyline Satellite: 3BHK ₹1.42 Cr, " +
     "4BHK ₹1.95 Cr, ready to move. Skyline Greens: 2BHK ₹62 L, 3BHK ₹94 L, " +
@@ -496,6 +498,8 @@ export function ensurePrimaryTenant() {
     const fill = {};
     if (!existing.wa_phone_number_id) fill.wa_phone_number_id = spec.wa_phone_number_id;
     if (!existing.wa_business_number) fill.wa_business_number = spec.wa_business_number;
+    if (!existing.ig_user_id) fill.ig_user_id = spec.ig_user_id;
+    if (!existing.ig_username) fill.ig_username = spec.ig_username;
     if (Object.keys(fill).length) {
       update(existing.id, fill);
       console.log(`primary tenant: filled in ${Object.keys(fill).join(", ")}`);

@@ -53,6 +53,14 @@ const IG_GRAPH_HOST = env("IG_GRAPH_HOST", "graph.instagram.com");
 const BUSINESS_NAME = env("BUSINESS_NAME", "Skyline Properties");
 const DOMAIN_NAME = env("DOMAIN_NAME", "real estate and property services");
 
+// Whether the operator actually named the business, or we quietly fell back to
+// the sample one. This matters more than it looks: BUSINESS_NAME is the name on
+// the public privacy policy, and App Review compares that page against the app
+// being submitted. A deployment that forgets to set it serves a policy for a
+// business that does not exist, and the submission is rejected for it.
+const BUSINESS_NAME_DEFAULTED = !env("BUSINESS_NAME");
+const DOMAIN_NAME_DEFAULTED = !env("DOMAIN_NAME");
+
 const config = {
   BASE_DIR,
   KB_DIR,
@@ -267,6 +275,19 @@ export function validateSecurity() {
   }
   if (config.LOG_WEBHOOK_PAYLOADS) {
     warnings.push("LOG_WEBHOOK_PAYLOADS is on — customer phone numbers and message text are being logged.");
+  }
+  if (BUSINESS_NAME_DEFAULTED) {
+    warnings.push(
+      `BUSINESS_NAME is not set — the public privacy policy at /privacy is being ` +
+      `served under the sample name "${BUSINESS_NAME}". Meta's App Review opens ` +
+      `that page and compares it to the app being submitted.`,
+    );
+  }
+  if (DOMAIN_NAME_DEFAULTED) {
+    warnings.push(
+      `DOMAIN_NAME is not set — the bot refuses off-topic questions by naming ` +
+      `"${DOMAIN_NAME}", which is the sample vertical, not yours.`,
+    );
   }
 
   if (warnings.length) {
