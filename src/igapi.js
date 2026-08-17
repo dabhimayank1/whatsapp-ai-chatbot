@@ -23,13 +23,8 @@ async function post(url, payload, token = "") {
     return [false, "Instagram token missing (IG_TOKEN not configured)"];
   }
 
-  let effectiveUrl = url;
-  if (bearer.startsWith("EAA")) {
-    effectiveUrl = "https://graph.facebook.com/v21.0/me/messages";
-  }
-
-  const separator = effectiveUrl.includes("?") ? "&" : "?";
-  const targetUrl = `${effectiveUrl}${separator}access_token=${encodeURIComponent(bearer)}`;
+  const separator = url.includes("?") ? "&" : "?";
+  const targetUrl = `${url}${separator}access_token=${encodeURIComponent(bearer)}`;
 
   try {
     const r = await fetch(targetUrl, {
@@ -82,30 +77,26 @@ async function privateReply(commentId, text, tenantId = null) {
     return [false, "Instagram token missing (IG_TOKEN not configured)"];
   }
 
-  // 1. Try graph.instagram.com/v21.0/me/messages
-  let [ok, err] = await post(
-    `${config.IG_GRAPH}/me/messages`,
-    { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
-    token,
-  );
+  const payload = { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } };
 
-  // 2. Try graph.facebook.com/v21.0/me/messages
-  if (!ok) {
-    [ok, err] = await post(
-      `https://graph.facebook.com/v21.0/me/messages`,
-      { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
-      token,
-    );
+  // 1. Try graph.instagram.com/v21.0/me/messages (Instagram Login Standard)
+  let [ok, err] = await post(`https://graph.instagram.com/v21.0/me/messages`, payload, token);
+  if (ok) return [true, ""];
+
+  // 2. Try graph.instagram.com/v21.0/{igId}/messages
+  if (igId && igId !== "me") {
+    [ok, err] = await post(`https://graph.instagram.com/v21.0/${igId}/messages`, payload, token);
+    if (ok) return [true, ""];
   }
 
-  // 3. Try igId endpoint
-  if (!ok && igId && igId !== "me") {
-    [ok, err] = await post(
-      `${config.IG_GRAPH}/${igId}/messages`,
-      { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
-      token,
-    );
+  // 3. Try graph.facebook.com/v21.0/{igId}/messages (Facebook Login Standard)
+  if (igId && igId !== "me") {
+    [ok, err] = await post(`https://graph.facebook.com/v21.0/${igId}/messages`, payload, token);
+    if (ok) return [true, ""];
   }
+
+  // 4. Try graph.facebook.com/v21.0/me/messages
+  [ok, err] = await post(`https://graph.facebook.com/v21.0/me/messages`, payload, token);
   return [ok, err];
 }
 
