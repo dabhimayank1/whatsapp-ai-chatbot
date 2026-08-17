@@ -313,7 +313,8 @@ export function validateIgConfig() {
   console.log("Instagram configuration:");
   console.log(`  IG_TOKEN configured: ${isConfigured}`);
   if (isConfigured) {
-    console.log(`  IG_TOKEN length: ${config.IG_TOKEN.length}`);
+    const safePrev = `${config.IG_TOKEN.slice(0, 12)}...${config.IG_TOKEN.slice(-8)}`;
+    console.log(`  IG_TOKEN preview: ${safePrev} (length: ${config.IG_TOKEN.length})`);
   }
   console.log(`  IG_USER_ID configured: ${isUserIdSet}`);
   console.log(`  IG_GRAPH: ${config.IG_GRAPH}`);
