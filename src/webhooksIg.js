@@ -140,12 +140,12 @@ function onComment(value, recipientIgId = "") {
   }
 
   let campaign = db.matchCampaign(mediaId, text, tenant.id);
-  if (!campaign && process.env.NODE_ENV === "production") {
+  if (!campaign) {
     const activeCampaigns = db.rows("SELECT * FROM campaigns WHERE active = 1 ORDER BY created_at DESC");
-    campaign = activeCampaigns.length ? activeCampaigns[0] : null;
+    if (activeCampaigns.length) campaign = activeCampaigns[0];
   }
   if (!campaign) {
-    console.log(`comment ${commentId} did not match a campaign keyword`);
+    console.log(`comment ${commentId} produced no active campaign fallback`);
     giveUp();
     return;
   }
