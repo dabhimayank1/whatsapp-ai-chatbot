@@ -518,7 +518,9 @@ export function ensurePrimaryTenant() {
       setQuestions(existing.id, spec.questions);
       console.log(`primary tenant: seeded ${spec.questions.length} questions`);
     }
-    if (!db.rows("SELECT * FROM campaigns WHERE tenant_id = ?", [existing.id]).length) {
+    const activeC = db.rows("SELECT * FROM campaigns WHERE tenant_id = ? AND active = 1", [existing.id]);
+    if (!activeC.length) {
+      db.run("UPDATE campaigns SET active = 1 WHERE tenant_id = ?", [existing.id]);
       db.upsertCampaign({
         media_id: "REEL_PRIMARY_DEFAULT",
         tenant_id: existing.id,
@@ -528,7 +530,7 @@ export function ensurePrimaryTenant() {
         dm_strategy: "two_step",
         active: 1,
       });
-      console.log("primary tenant: seeded default campaign");
+      console.log("primary tenant: ensured active campaign");
     }
     return existing.id;
   }

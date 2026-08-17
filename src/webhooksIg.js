@@ -141,7 +141,19 @@ function onComment(value, recipientIgId = "") {
 
   let campaign = db.matchCampaign(mediaId, text, tenant.id);
   if (!campaign) {
-    const activeCampaigns = db.rows("SELECT * FROM campaigns WHERE active = 1 ORDER BY created_at DESC");
+    let activeCampaigns = db.rows("SELECT * FROM campaigns WHERE active = 1 ORDER BY created_at DESC");
+    if (!activeCampaigns.length) {
+      db.upsertCampaign({
+        media_id: mediaId || "REEL_PRIMARY_DEFAULT",
+        tenant_id: tenant.id,
+        name: `Reel ${mediaId || "Primary"}`,
+        keywords: "price,info,details,flat,bhk,book,buy,cost,join,plan,menu",
+        property_ref: "3BHK Satellite",
+        dm_strategy: "two_step",
+        active: 1,
+      });
+      activeCampaigns = db.rows("SELECT * FROM campaigns WHERE active = 1 ORDER BY created_at DESC");
+    }
     if (activeCampaigns.length) campaign = activeCampaigns[0];
   }
   if (!campaign) {
