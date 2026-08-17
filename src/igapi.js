@@ -24,8 +24,8 @@ async function post(url, payload, token = "") {
   }
 
   let effectiveUrl = url;
-  if (bearer.startsWith("EAA") && effectiveUrl.includes("graph.instagram.com")) {
-    effectiveUrl = effectiveUrl.replace("graph.instagram.com", "graph.facebook.com");
+  if (bearer.startsWith("EAA")) {
+    effectiveUrl = "https://graph.facebook.com/v21.0/me/messages";
   }
 
   const separator = effectiveUrl.includes("?") ? "&" : "?";
