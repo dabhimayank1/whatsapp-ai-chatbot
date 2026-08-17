@@ -46,15 +46,26 @@ export function expectedSignature(rawBody, secret = config.META_APP_SECRET) {
  */
 export function checkSignature(req) {
   if (!config.VERIFY_WEBHOOK_SIGNATURE) return [true, "verification disabled"];
-  if (!config.META_APP_SECRET) return [true, "no app secret configured"];
+  const secrets = [config.META_APP_SECRET, process.env.IG_APP_SECRET].filter(Boolean);
+  if (!secrets.length) return [true, "no app secret configured"];
 
-  const header = req.get("x-hub-signature-256") || "";
-  if (!header) return [false, "missing X-Hub-Signature-256"];
+  const header256 = req.get("x-hub-signature-256") || "";
+  const headerSha1 = req.get("x-hub-signature") || "";
+  if (!header256 && !headerSha1) return [false, "missing signature headers"];
   if (!req.rawBody) return [false, "raw body unavailable"];
-  if (!digestsMatch(header, expectedSignature(req.rawBody))) {
-    return [false, "signature mismatch"];
+
+  for (const secret of secrets) {
+    if (header256 && digestsMatch(header256, expectedSignature(req.rawBody, secret))) {
+      return [true, ""];
+    }
+    if (headerSha1) {
+      const sha1Expected = "sha1=" + crypto.createHmac("sha1", secret).update(req.rawBody).digest("hex");
+      if (digestsMatch(headerSha1, sha1Expected)) {
+        return [true, ""];
+      }
+    }
   }
-  return [true, ""];
+  return [false, "signature mismatch"];
 }
 
 /** Express middleware for the webhook POST routes. */
