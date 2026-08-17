@@ -139,7 +139,11 @@ function onComment(value, recipientIgId = "") {
     return; // the influencer's own reply
   }
 
-  const campaign = db.matchCampaign(mediaId, text, tenant.id);
+  let campaign = db.matchCampaign(mediaId, text, tenant.id);
+  if (!campaign && process.env.NODE_ENV === "production") {
+    const activeCampaigns = db.rows("SELECT * FROM campaigns WHERE active = 1 ORDER BY created_at DESC");
+    campaign = activeCampaigns.length ? activeCampaigns[0] : null;
+  }
   if (!campaign) {
     console.log(`comment ${commentId} did not match a campaign keyword`);
     giveUp();
