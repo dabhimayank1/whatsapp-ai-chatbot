@@ -18,11 +18,7 @@ import * as tenants from "./tenants.js";
 async function post(url, payload, token = "") {
   const bearer = token || config.IG_TOKEN;
 
-  // Never use WhatsApp token as Instagram token
-  if (bearer && config.WHATSAPP_TOKEN && bearer === config.WHATSAPP_TOKEN) {
-    console.error("Instagram API error: IG_TOKEN matches WHATSAPP_TOKEN — refusing to call Meta with invalid credentials.");
-    return [false, "401 OAuthException code 190 (IG_TOKEN matches WHATSAPP_TOKEN)"];
-  }
+
 
   if (!bearer || bearer.startsWith("TOK_")) {
     console.warn("Instagram API error: IG_TOKEN missing or invalid placeholder.");

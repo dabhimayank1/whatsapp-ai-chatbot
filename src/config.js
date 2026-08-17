@@ -319,8 +319,7 @@ export function validateIgConfig() {
     return false;
   }
   if (isSameAsWa) {
-    console.error("  Instagram token ERROR: IG_TOKEN matches WHATSAPP_TOKEN! Instagram requires its own token.");
-    return false;
+    console.log("  Instagram token status: IG_TOKEN matches WHATSAPP_TOKEN (unified System User Token).");
   }
   if (isPlaceholder) {
     console.warn("  Instagram token status: IG_TOKEN is a placeholder token.");
