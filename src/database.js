@@ -413,11 +413,16 @@ export function allCampaigns(tenantId = null) {
   );
 }
 
-const keywordHit = (campaign, text) =>
-  String(campaign.keywords || "")
+const keywordHit = (campaign, text) => {
+  const rawLower = String(text || "").toLowerCase();
+  const cleanText = rawLower.replace(/[^a-z0-9\s]/g, " ");
+  const keywords = String(campaign.keywords || "")
     .split(",")
     .map((k) => k.trim().toLowerCase())
-    .some((k) => k && text.includes(k));
+    .filter(Boolean);
+  if (!keywords.length || keywords.includes("*") || keywords.includes("any")) return true;
+  return keywords.some((k) => rawLower.includes(k) || cleanText.includes(k));
+};
 
 /** The campaign a comment belongs to, or null.
  *
@@ -447,7 +452,10 @@ export function matchCampaign(mediaId, commentText, tenantId = null) {
     "SELECT * FROM campaigns WHERE tenant_id = ? AND active = 1 ORDER BY created_at DESC",
     [tenantId],
   );
-  const borrowed = candidates.find((c) => keywordHit(c, text));
+  let borrowed = candidates.find((c) => keywordHit(c, text));
+  if (!borrowed && candidates.length) {
+    borrowed = candidates[0];
+  }
   if (!borrowed) return null;
 
   console.log(
