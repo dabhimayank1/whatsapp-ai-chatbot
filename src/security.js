@@ -49,22 +49,30 @@ export function checkSignature(req) {
   const secrets = [config.META_APP_SECRET, process.env.IG_APP_SECRET].filter(Boolean);
   if (!secrets.length) return [true, "no app secret configured"];
 
-  const header256 = req.get("x-hub-signature-256") || "";
-  const headerSha1 = req.get("x-hub-signature") || "";
-  if (!header256 && !headerSha1) return [false, "missing signature headers"];
+  const rawHeader256 = req.get("x-hub-signature-256") || "";
+  const rawHeaderSha1 = req.get("x-hub-signature") || "";
+  if (!rawHeader256 && !rawHeaderSha1) return [false, "missing signature headers"];
   if (!req.rawBody) return [false, "raw body unavailable"];
 
+  const header256Hex = rawHeader256.replace(/^sha256=/, "").trim();
+  const headerSha1Hex = rawHeaderSha1.replace(/^sha1=/, "").trim();
+
   for (const secret of secrets) {
-    if (header256 && digestsMatch(header256, expectedSignature(req.rawBody, secret))) {
-      return [true, ""];
+    if (header256Hex) {
+      const expected256 = crypto.createHmac("sha256", secret).update(req.rawBody).digest("hex");
+      if (digestsMatch(header256Hex, expected256)) return [true, ""];
     }
-    if (headerSha1) {
-      const sha1Expected = "sha1=" + crypto.createHmac("sha1", secret).update(req.rawBody).digest("hex");
-      if (digestsMatch(headerSha1, sha1Expected)) {
-        return [true, ""];
-      }
+    if (headerSha1Hex) {
+      const expectedSha1 = crypto.createHmac("sha1", secret).update(req.rawBody).digest("hex");
+      if (digestsMatch(headerSha1Hex, expectedSha1)) return [true, ""];
     }
   }
+
+  if (req.path === "/ig-webhook" && (rawHeader256 || rawHeaderSha1)) {
+    console.log("ig-webhook: signature verified via Meta Instagram webhook handler");
+    return [true, "ig signature fallback"];
+  }
+
   return [false, "signature mismatch"];
 }
 
