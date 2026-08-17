@@ -18,15 +18,16 @@ import * as tenants from "./tenants.js";
 async function post(url, payload, token = "") {
   const bearer = (token || config.IG_TOKEN || "").trim().replace(/^["']|["']$/g, "");
 
-
-
   if (!bearer || bearer.startsWith("TOK_")) {
     console.warn("Instagram API error: IG_TOKEN missing or invalid placeholder.");
     return [false, "Instagram token missing (IG_TOKEN not configured)"];
   }
 
+  const separator = url.includes("?") ? "&" : "?";
+  const targetUrl = `${url}${separator}access_token=${encodeURIComponent(bearer)}`;
+
   try {
-    const r = await fetch(url, {
+    const r = await fetch(targetUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${bearer}`,
@@ -76,12 +77,23 @@ async function privateReply(commentId, text, tenantId = null) {
     return [false, "Instagram token missing (IG_TOKEN not configured)"];
   }
 
-  // Try /me/messages first (Instagram Login API standard)
+  // 1. Try graph.instagram.com/v21.0/me/messages
   let [ok, err] = await post(
     `${config.IG_GRAPH}/me/messages`,
     { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
     token,
   );
+
+  // 2. Try graph.facebook.com/v21.0/me/messages
+  if (!ok) {
+    [ok, err] = await post(
+      `https://graph.facebook.com/v21.0/me/messages`,
+      { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
+      token,
+    );
+  }
+
+  // 3. Try igId endpoint
   if (!ok && igId && igId !== "me") {
     [ok, err] = await post(
       `${config.IG_GRAPH}/${igId}/messages`,
