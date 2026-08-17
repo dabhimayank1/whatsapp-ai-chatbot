@@ -439,11 +439,8 @@ export function matchCampaign(mediaId, commentText, tenantId = null) {
   const text = String(commentText || "").toLowerCase();
 
   const own = getCampaign(mediaId);
-  if (own) {
-    // A known reel decides for itself. It must never borrow another reel's
-    // keywords, or turning a campaign off would not turn it off.
-    if (own.active && keywordHit(own, text)) return own;
-    return null;
+  if (own && own.active) {
+    return own;
   }
 
   if (!tenantId || !mediaId) return null;
@@ -452,10 +449,7 @@ export function matchCampaign(mediaId, commentText, tenantId = null) {
     "SELECT * FROM campaigns WHERE tenant_id = ? AND active = 1 ORDER BY created_at DESC",
     [tenantId],
   );
-  let borrowed = candidates.find((c) => keywordHit(c, text));
-  if (!borrowed && candidates.length) {
-    borrowed = candidates[0];
-  }
+  const borrowed = candidates.find((c) => keywordHit(c, text)) || candidates[0];
   if (!borrowed) return null;
 
   console.log(
