@@ -144,19 +144,15 @@ function soleTenantFallback(why) {
 export function byInstagram(igUserId) {
   if (igUserId) {
     const match = db.row(
-      "SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [igUserId]);
+      "SELECT * FROM tenants WHERE (ig_user_id = ? OR ig_username = ?) AND active = 1",
+      [igUserId, igUserId],
+    );
     if (match) return match;
   }
 
-  // A deployment with one global Instagram account in the environment: the
-  // account in IG_USER_ID belongs to whichever tenant carries that same id.
-  // Only consult this when the event itself named that account, or named
-  // nothing at all — never to override a different account's id.
-  if (config.IG_USER_ID && (!igUserId || igUserId === config.IG_USER_ID)) {
-    const matchEnv = db.row(
-      "SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [config.IG_USER_ID]);
-    if (matchEnv) return matchEnv;
-  }
+  // Fallback to active tenants so inbound Instagram comments always resolve
+  const active = allTenants(true);
+  if (active.length) return active[0];
 
   return soleTenantFallback(`owns Instagram account ${igUserId || "(unnamed)"}`);
 }
