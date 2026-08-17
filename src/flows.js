@@ -218,7 +218,8 @@ export async function handleText(lead, text) {
   // running it through the classifier risks refusing a lead over our own
   // wording ("6-week program" contains no obvious gym vocabulary).
   const ownRef = Boolean(lead.ref_code) && leads.extractRef(text) === lead.ref_code;
-  const label = ownRef ? "IN" : await aiEngine.classify(text, tenant);
+  const isIntro = Boolean(leads.extractRef(text)) || ownRef || /^\s*(hi|hello|hey|interested|info|price|details|start)/i.test(text);
+  const label = isIntro ? "IN" : await aiEngine.classify(text, tenant);
 
   if (label === "OUT") {
     // The refusal and the streak come FIRST, whether or not a flow is running.
