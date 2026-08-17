@@ -207,19 +207,7 @@ export function runRecovery() {
 let _lastPrune = 0;
 const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
-/** One pass, and never two at once.
- *
- * The guard lives HERE rather than in the interval callback because the webhook
- * handlers call tick() directly for instant replies. With the guard only around
- * the timer, a burst of inbound messages ran overlapping passes, and three
- * things in a pass are not safe to run concurrently:
- *
- *   · the hourly budget — each pass reads sendsLastHour() before any of them
- *     writes, so N passes each grant themselves a full batch and blow past
- *     Meta's cap, which is the one thing the queue exists to prevent
- *   · crm.drain()      — selects pending rows, awaits an HTTP POST, then marks
- *                        them, with no atomic claim: two passes push twice
- *   · runRecovery()    — reads leadsNeedingRecovery() then sets recovery_sent,
+/** One pass, and never two at once. */
 let _lastTokenRefresh = 0;
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
