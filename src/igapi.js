@@ -44,7 +44,7 @@ async function post(url, payload, token = "") {
         const parsed = JSON.parse(text);
         if (parsed.error) {
           const e = parsed.error;
-          errDetail = `${r.status} [${e.type || "OAuthException"}:${e.code || r.status}] ${e.message || text}`;
+          errDetail = `${r.status} [${e.type || "OAuthException"}:${e.code || r.status}] ${e.message || text} (len=${bearer.length}, start=${bearer.slice(0, 10)})`;
         }
       } catch {
         // text was not json
