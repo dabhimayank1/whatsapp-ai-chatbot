@@ -23,8 +23,13 @@ async function post(url, payload, token = "") {
     return [false, "Instagram token missing (IG_TOKEN not configured)"];
   }
 
-  const separator = url.includes("?") ? "&" : "?";
-  const targetUrl = `${url}${separator}access_token=${encodeURIComponent(bearer)}`;
+  let effectiveUrl = url;
+  if (bearer.startsWith("EAA") && effectiveUrl.includes("graph.instagram.com")) {
+    effectiveUrl = effectiveUrl.replace("graph.instagram.com", "graph.facebook.com");
+  }
+
+  const separator = effectiveUrl.includes("?") ? "&" : "?";
+  const targetUrl = `${effectiveUrl}${separator}access_token=${encodeURIComponent(bearer)}`;
 
   try {
     const r = await fetch(targetUrl, {
