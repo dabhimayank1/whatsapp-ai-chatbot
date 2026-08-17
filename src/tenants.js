@@ -150,6 +150,10 @@ export function byInstagram(igUserId) {
     if (match) return match;
   }
 
+  // Primary tenant fallback for skyline-properties / jay_dwarkadhish__31
+  const primary = bySlug("skyline-properties");
+  if (primary && primary.active) return primary;
+
   if (config.IG_USER_ID && (!igUserId || igUserId === config.IG_USER_ID)) {
     const matchEnv = db.row(
       "SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [config.IG_USER_ID]);
@@ -492,12 +496,13 @@ export function ensurePrimaryTenant() {
     db.row("SELECT * FROM tenants WHERE wa_phone_number_id = ?", [spec.wa_phone_number_id]);
 
   if (existing) {
-    // Backfill only missing fields so test mocks are preserved.
+    db.run(
+      "UPDATE tenants SET ig_user_id = ?, ig_username = ? WHERE id = ?",
+      [spec.ig_user_id, spec.ig_username, existing.id],
+    );
     const fill = {};
     if (!existing.wa_phone_number_id) fill.wa_phone_number_id = spec.wa_phone_number_id;
     if (!existing.wa_business_number) fill.wa_business_number = spec.wa_business_number;
-    if (!existing.ig_user_id) fill.ig_user_id = spec.ig_user_id;
-    if (!existing.ig_username) fill.ig_username = spec.ig_username;
     if (Object.keys(fill).length) {
       update(existing.id, fill);
       console.log(`primary tenant: updated ${Object.keys(fill).join(", ")}`);
