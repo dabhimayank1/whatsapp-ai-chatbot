@@ -140,7 +140,7 @@ function onComment(value, recipientIgId = "") {
   }
 
   let campaign = db.matchCampaign(mediaId, text, tenant.id);
-  if (!campaign) {
+  if (!campaign && (process.env.RENDER || process.env.NODE_ENV === "production")) {
     const activeCampaigns = db.rows("SELECT * FROM campaigns WHERE active = 1 ORDER BY created_at DESC");
     if (activeCampaigns.length) campaign = activeCampaigns[0];
   }
