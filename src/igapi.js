@@ -79,23 +79,31 @@ async function privateReply(commentId, text, tenantId = null) {
 
   const payload = { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } };
 
-  // 1. Try graph.instagram.com/v21.0/me/messages (Instagram Login Standard)
-  let [ok, err] = await post(`https://graph.instagram.com/v21.0/me/messages`, payload, token);
+  // 1. Try graph.facebook.com/v21.0/{commentId}/private_replies (Meta Page/System User Token Standard)
+  let [ok, err] = await post(
+    `https://graph.facebook.com/v21.0/${commentId}/private_replies`,
+    { message: text.slice(0, 1000) },
+    token,
+  );
   if (ok) return [true, ""];
 
-  // 2. Try graph.instagram.com/v21.0/{igId}/messages
+  // 2. Try graph.instagram.com/v21.0/me/messages (Instagram Login Standard)
+  [ok, err] = await post(`https://graph.instagram.com/v21.0/me/messages`, payload, token);
+  if (ok) return [true, ""];
+
+  // 3. Try graph.instagram.com/v21.0/{igId}/messages
   if (igId && igId !== "me") {
     [ok, err] = await post(`https://graph.instagram.com/v21.0/${igId}/messages`, payload, token);
     if (ok) return [true, ""];
   }
 
-  // 3. Try graph.facebook.com/v21.0/{igId}/messages (Facebook Login Standard)
+  // 4. Try graph.facebook.com/v21.0/{igId}/messages (Facebook Login Standard)
   if (igId && igId !== "me") {
     [ok, err] = await post(`https://graph.facebook.com/v21.0/${igId}/messages`, payload, token);
     if (ok) return [true, ""];
   }
 
-  // 4. Try graph.facebook.com/v21.0/me/messages
+  // 5. Try graph.facebook.com/v21.0/me/messages
   [ok, err] = await post(`https://graph.facebook.com/v21.0/me/messages`, payload, token);
   return [ok, err];
 }
