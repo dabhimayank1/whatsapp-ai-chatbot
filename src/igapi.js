@@ -58,9 +58,12 @@ async function post(url, payload, token = "") {
 }
 
 export function creds(tenantId) {
+  if (config.IG_TOKEN && !config.IG_TOKEN.startsWith("TOK_")) {
+    return [config.IG_USER_ID || "me", config.IG_TOKEN];
+  }
   if (tenantId) {
     const t = tenants.get(tenantId);
-    if (t && t.ig_token && !t.ig_token.startsWith("TOK_") && (t.ig_token !== config.WHATSAPP_TOKEN || !config.WHATSAPP_TOKEN)) {
+    if (t && t.ig_token && !t.ig_token.startsWith("TOK_")) {
       return [t.ig_user_id || config.IG_USER_ID, t.ig_token];
     }
   }
