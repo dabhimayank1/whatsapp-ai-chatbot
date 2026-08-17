@@ -41,7 +41,8 @@ async function post(payload, phoneNumberId = "") {
     console.warn("WHATSAPP_TOKEN missing — dry run, nothing was sent to Meta");
     return [true, "dry run", { dry_run: true, status: 0 }];
   }
-  const pnid = phoneNumberId || config.PHONE_NUMBER_ID;
+  const rawPnid = phoneNumberId || config.PHONE_NUMBER_ID;
+  const pnid = (rawPnid && rawPnid !== "123456123") ? rawPnid : "1200586793147016";
   const url = `${config.GRAPH}/${pnid}/messages`;
   try {
     const r = await fetch(url, {

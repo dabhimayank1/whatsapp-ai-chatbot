@@ -118,7 +118,7 @@ const config = {
 
   // ------------------------------------------------------------------ models
   ANSWER_MODEL: env("ANSWER_MODEL", "llama-3.3-70b-versatile"),
-  CLASSIFIER_MODEL: env("CLASSIFIER_MODEL", "llama-3.1-8b-instant"),
+  CLASSIFIER_MODEL: env("CLASSIFIER_MODEL", "llama-3.3-70b-versatile"),
 
   // ---------------------------------------------------------------- identity
   BUSINESS_NAME,
