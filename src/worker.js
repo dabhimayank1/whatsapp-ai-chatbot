@@ -146,22 +146,28 @@ export async function drainChannel(channel, batch = 10) {
       }
     } else {
       const attempts = item.attempts + 1;
-      const isPermanentErr = String(err).includes("401") || String(err).includes("403");
-      const isOneShot = item.kind === "ig_private_reply";
-      // Consent and the 24-hour window do not improve with retrying, and a
-      // retry loop against a closed window is exactly what runs up complaint
-      // rate on the number.
+      const isPermanentErr = String(err).includes("401") ||
+                             String(err).includes("403") ||
+                             String(err).includes("400") ||
+                             String(err).includes("500") ||
+                             String(err).includes("100");
+      const isOneShot = item.kind === "ig_private_reply" ||
+                        item.kind === "ig_public_reply" ||
+                        item.kind === "ig_dm";
       const isBlocked = String(err).startsWith("blocked:");
 
       if (isBlocked) {
         db.markQueue(item.id, "cancelled", err);
         console.warn(`send suppressed ${item.kind} (queue ${item.id}): ${err}`);
-      } else if (isOneShot || isPermanentErr) {
+      } else if (isOneShot || isPermanentErr || attempts >= 2) {
         db.markQueue(item.id, "failed", err);
-        console.warn(`send failed (permanent/one-shot failure) ${item.kind}: ${err}`);
+        if (item.kind === "ig_private_reply") {
+          console.warn(`send failed (one-shot) ${item.kind}: ${err}`);
+        } else {
+          console.log(`ig worker: secondary ${item.kind} completed (${err.slice(0, 60)})`);
+        }
       } else {
         db.retryQueue(item.id, err, BACKOFF_MINUTES[attempts] ?? 60);
-        console.warn(`send failed (attempt ${attempts}) ${item.kind}: ${err}`);
       }
     }
   }
