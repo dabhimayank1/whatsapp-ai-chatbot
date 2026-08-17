@@ -72,6 +72,7 @@ async function post(payload, phoneNumberId = "") {
       console.error(
         `WhatsApp send failed ${r.status} code=${detail.error_code ?? "-"}` +
         `${detail.error_subcode ? `/${detail.error_subcode}` : ""}: ${detail.error_message}`,
+        { body: parsed }
       );
       // Keep the code in the error string: worker.js classifies retryable vs
       // permanent failures by matching on it.
