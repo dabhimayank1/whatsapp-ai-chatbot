@@ -14,8 +14,12 @@ import { fileURLToPath } from "node:url";
 
 import "dotenv/config";
 
-const env = (key, fallback = "") =>
-  process.env[key] !== undefined && process.env[key] !== "" ? process.env[key] : fallback;
+const env = (key, fallback = "") => {
+  const v = process.env[key];
+  if (v === undefined || v === null) return fallback;
+  const s = String(v).trim().replace(/[\r\n]/g, "").replace(/^["']|["']$/g, "");
+  return s !== "" ? s : fallback;
+};
 const envInt = (key, fallback) => {
   const n = parseInt(env(key, ""), 10);
   return Number.isFinite(n) ? n : fallback;
