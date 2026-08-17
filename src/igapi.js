@@ -16,7 +16,7 @@ import config from "./config.js";
 import * as tenants from "./tenants.js";
 
 async function post(url, payload, token = "") {
-  const bearer = (token || config.IG_TOKEN || "").trim().replace(/^["']|["']$/g, "");
+  let bearer = (token || config.IG_TOKEN || "").trim().replace(/^["']|["']$/g, "").replace(/_+$/, "");
 
   if (!bearer || bearer.startsWith("TOK_")) {
     console.warn("Instagram API error: IG_TOKEN missing or invalid placeholder.");
