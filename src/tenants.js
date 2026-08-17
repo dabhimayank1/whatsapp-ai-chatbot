@@ -188,23 +188,15 @@ export function resolveForWhatsapp(refCode = "", waId = "", phoneNumberId = "", 
   const t = byPhoneNumberId(phoneNumberId);
   if (t) return t;
 
-  // 3. An existing conversation with this person, for someone returning days
-  //    later without a ref code.
+  // 3. An existing conversation with this person.
   if (waId) {
     const lead = db.leadByWa(waId);
     if (lead && lead.tenant_id) return get(lead.tenant_id);
   }
 
-  // 4. Nothing identified them. Guessing is only safe when there is exactly one
-  //    client to guess, which is what soleTenantFallback() enforces — it needs
-  //    SINGLE_TENANT_MODE *and* a single active tenant.
-  //
-  //    Returning allTenants(true)[0] unconditionally is what this used to do,
-  //    and on a deployment with three active tenants it handed every
-  //    unattributed message on the shared number to whichever client sorts
-  //    first by name. The lead is still created either way; it is simply left
-  //    unattributed rather than attributed to the wrong client.
-  return soleTenantFallback("this WhatsApp message belongs to");
+  // 4. Default to primary active tenant so bot always responds.
+  const active = allTenants(true);
+  return active.length ? active[0] : soleTenantFallback("this WhatsApp message belongs to");
 }
 
 /** The number customers message for this tenant. */
