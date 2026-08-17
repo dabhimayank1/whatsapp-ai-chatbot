@@ -439,8 +439,9 @@ export function matchCampaign(mediaId, commentText, tenantId = null) {
   const text = String(commentText || "").toLowerCase();
 
   const own = getCampaign(mediaId);
-  if (own && own.active) {
-    return own;
+  if (own) {
+    if (own.active && keywordHit(own, text)) return own;
+    return null;
   }
 
   if (!tenantId || !mediaId) return null;
@@ -449,29 +450,33 @@ export function matchCampaign(mediaId, commentText, tenantId = null) {
     "SELECT * FROM campaigns WHERE tenant_id = ? AND active = 1 ORDER BY created_at DESC",
     [tenantId],
   );
-  const borrowed = candidates.find((c) => keywordHit(c, text)) || candidates[0];
+  const borrowed = candidates.find((c) => keywordHit(c, text));
   if (!borrowed) return null;
 
-  console.log(
-    `reel ${mediaId} is not registered — cloning "${borrowed.name}" so it is ` +
-    "tracked separately. Rename it in the portal's Campaigns tab.",
-  );
-  upsertCampaign({
-    media_id: mediaId,
-    tenant_id: tenantId,
-    name: `${borrowed.name} (auto)`,
-    keywords: borrowed.keywords,
-    property_ref: borrowed.property_ref,
-    dm_strategy: borrowed.dm_strategy,
-    dm_step1: borrowed.dm_step1,
-    dm_step2: borrowed.dm_step2,
-    dm_one_step: borrowed.dm_one_step,
-    public_reply: borrowed.public_reply,
-    wa_prefill: borrowed.wa_prefill,
-    variant: borrowed.variant,
-    active: 1,
-  });
-  return getCampaign(mediaId);
+  if (!getCampaign(mediaId) && borrowed) {
+    console.log(
+      `reel ${mediaId} is not registered — cloning "${borrowed.name}" so it is ` +
+      "tracked separately. Rename it in the portal's Campaigns tab.",
+    );
+    upsertCampaign({
+      media_id: mediaId,
+      tenant_id: borrowed.tenant_id,
+      name: `${borrowed.name} (auto)`,
+      keywords: borrowed.keywords,
+      property_ref: borrowed.property_ref,
+      dm_strategy: borrowed.dm_strategy,
+      dm_step1: borrowed.dm_step1,
+      dm_step2: borrowed.dm_step2,
+      dm_one_step: borrowed.dm_one_step,
+      public_reply: borrowed.public_reply,
+      wa_prefill: borrowed.wa_prefill,
+      variant: borrowed.variant,
+      active: 1,
+    });
+    return getCampaign(mediaId) || borrowed;
+  }
+
+  return borrowed;
 }
 
 // -------------------------------------------------------------------- leads

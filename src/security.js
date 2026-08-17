@@ -68,11 +68,6 @@ export function checkSignature(req) {
     }
   }
 
-  if (req.path === "/ig-webhook" && (rawHeader256 || rawHeaderSha1)) {
-    console.log("ig-webhook: signature verified via Meta Instagram webhook handler");
-    return [true, "ig signature fallback"];
-  }
-
   return [false, "signature mismatch"];
 }
 

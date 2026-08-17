@@ -150,9 +150,11 @@ export function byInstagram(igUserId) {
     if (match) return match;
   }
 
-  // Fallback to active tenants so inbound Instagram comments always resolve
-  const active = allTenants(true);
-  if (active.length) return active[0];
+  if (config.IG_USER_ID && (!igUserId || igUserId === config.IG_USER_ID)) {
+    const matchEnv = db.row(
+      "SELECT * FROM tenants WHERE ig_user_id = ? AND active = 1", [config.IG_USER_ID]);
+    if (matchEnv) return matchEnv;
+  }
 
   return soleTenantFallback(`owns Instagram account ${igUserId || "(unnamed)"}`);
 }
@@ -438,7 +440,7 @@ export const PRIMARY_TENANT = {
   domain_name: "real estate and property services",
   wa_phone_number_id: "1200586793147016",
   wa_business_number: "15552041400",
-  ig_user_id: "17841448785224373",
+  ig_user_id: process.env.IG_USER_ID_PROP || "17841448785224373",
   ig_username: "jay_dwarkadhish__31",
   knowledge_base:
     "Skyline Properties, RERA registered. Skyline Satellite: 3BHK ₹1.42 Cr, " +
