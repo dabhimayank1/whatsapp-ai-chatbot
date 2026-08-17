@@ -39,7 +39,8 @@ router.post("/webhook", requireValidSignature, (req, res) => {
   const inboundCount = (payload.entry || [])
     .flatMap((e) => e.changes || [])
     .reduce((n, c) => n + ((c.value || {}).messages || []).length, 0);
-  console.log(`📥 inbound WhatsApp webhook: ${inboundCount} message(s)`);
+  console.log(`📥 inbound WhatsApp webhook (${req.path}): ${inboundCount} message(s)`);
+  console.log("📥 raw payload:", JSON.stringify(payload).slice(0, 500));
   logPayload("wa-webhook payload:", payload);
 
   res.status(200).send("OK");

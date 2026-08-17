@@ -81,6 +81,9 @@ router.post("/ig-webhook", requireValidSignature, async (req, res) => {
 });
 
 export async function process_(payload) {
+  if (payload.object === "whatsapp_business_account") {
+    return await processWa(payload);
+  }
   if (payload.sample) {
     const s = payload.sample;
     if (s.field === "comments") onComment(s.value || {}, "");
