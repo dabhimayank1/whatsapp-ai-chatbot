@@ -163,6 +163,8 @@ export async function drainChannel(channel, batch = 10) {
         db.markQueue(item.id, "failed", err);
         if (item.kind === "ig_private_reply") {
           console.warn(`send failed (one-shot) ${item.kind}: ${err}`);
+        } else if (item.kind.startsWith("wa_")) {
+          console.error(`WhatsApp send failed (${item.kind}): ${err}`);
         } else {
           console.log(`ig worker: secondary ${item.kind} completed (${err.slice(0, 60)})`);
         }
