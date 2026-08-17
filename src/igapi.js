@@ -77,11 +77,20 @@ async function privateReply(commentId, text, tenantId = null) {
     return [false, "Instagram token missing (IG_TOKEN not configured)"];
   }
 
-  return post(
-    `${config.IG_GRAPH}/${igId}/messages`,
+  // Try /me/messages first (Instagram Login API standard)
+  let [ok, err] = await post(
+    `${config.IG_GRAPH}/me/messages`,
     { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
     token,
   );
+  if (!ok && igId && igId !== "me") {
+    [ok, err] = await post(
+      `${config.IG_GRAPH}/${igId}/messages`,
+      { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } },
+      token,
+    );
+  }
+  return [ok, err];
 }
 
 /** Reply under the comment. Also nudges the reel's engagement. */
@@ -91,11 +100,20 @@ async function publicReply(commentId, text, tenantId = null) {
     return [false, "Instagram token missing (IG_TOKEN not configured)"];
   }
 
-  return post(
+  let [ok, err] = await post(
     `${config.IG_GRAPH}/${commentId}/replies`,
     { message: text.slice(0, 300) },
     token,
   );
+  if (!ok) {
+    // Fallback to Graph Facebook endpoint if Graph Instagram endpoint rejected comment reply
+    [ok, err] = await post(
+      `https://graph.facebook.com/v21.0/${commentId}/replies`,
+      { message: text.slice(0, 300) },
+      token,
+    );
+  }
+  return [ok, err];
 }
 
 /** Standard DM. Only valid inside the 24-hour window. */
@@ -104,11 +122,19 @@ async function sendDm(igUserId, text, tenantId = null) {
   if (!token) {
     return [false, "Instagram token missing (IG_TOKEN not configured)"];
   }
-  return post(
-    `${config.IG_GRAPH}/${igId}/messages`,
+  let [ok, err] = await post(
+    `${config.IG_GRAPH}/me/messages`,
     { recipient: { id: igUserId }, message: { text: text.slice(0, 1000) } },
     token,
   );
+  if (!ok && igId && igId !== "me") {
+    [ok, err] = await post(
+      `${config.IG_GRAPH}/${igId}/messages`,
+      { recipient: { id: igUserId }, message: { text: text.slice(0, 1000) } },
+      token,
+    );
+  }
+  return [ok, err];
 }
 
 export default { creds, privateReply, publicReply, sendDm };
