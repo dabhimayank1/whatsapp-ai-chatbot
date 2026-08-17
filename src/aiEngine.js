@@ -78,8 +78,8 @@ async function classify(message, tenant = null) {
       .replace(/[^A-Z]/g, "");
     return ["IN", "CHAT", "OUT"].includes(label) ? label : "OUT";
   } catch (err) {
-    console.error("classifier failed:", err?.message || err);
-    return "OUT";
+    console.error("classifier failed:", err?.status || "", err?.message || err);
+    return "IN";
   }
 }
 

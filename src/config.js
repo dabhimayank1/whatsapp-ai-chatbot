@@ -121,8 +121,8 @@ const config = {
   IG_GRAPH: `https://${IG_GRAPH_HOST}/${GRAPH_VERSION}`,
 
   // ------------------------------------------------------------------ models
-  ANSWER_MODEL: env("ANSWER_MODEL", "llama3-8b-8192"),
-  CLASSIFIER_MODEL: env("CLASSIFIER_MODEL", "llama3-8b-8192"),
+  ANSWER_MODEL: env("ANSWER_MODEL", "llama-3.1-8b-instant"),
+  CLASSIFIER_MODEL: env("CLASSIFIER_MODEL", "llama-3.1-8b-instant"),
 
   // ---------------------------------------------------------------- identity
   BUSINESS_NAME,
